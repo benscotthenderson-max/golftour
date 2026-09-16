@@ -47,7 +47,7 @@ interface GolferProfileProps {
   onResetDatabase?: () => void;
   onOpenAddGolferModal?: () => void;
   onLogout?: () => void;
-  onDeleteAccount?: (userId: string) => void;
+  onDeleteAccount?: (userId: string) => void | Promise<void>;
   onOpenVerifyModal?: () => void;
   onNavigateToTournaments?: () => void;
 }
@@ -985,10 +985,15 @@ export const GolferProfile: React.FC<GolferProfileProps> = ({
                 type="button"
                 id="confirm-delete-account-btn"
                 disabled={deleteConfirmText.trim().toUpperCase() !== 'DELETE' || isDeleting}
-                onClick={() => {
+                onClick={async () => {
                   if (onDeleteAccount) {
                     setIsDeleting(true);
-                    onDeleteAccount(currentUser.id);
+                    try {
+                      await onDeleteAccount(currentUser.id);
+                    } catch (err) {
+                      console.error('Delete account error:', err);
+                      setIsDeleting(false);
+                    }
                   }
                 }}
                 className="py-2 px-4 rounded-xl bg-red-600 hover:bg-red-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-black transition flex items-center gap-1.5 shadow-md shadow-red-900/30 cursor-pointer"

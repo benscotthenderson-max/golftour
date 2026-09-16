@@ -538,13 +538,38 @@ function AppContent({
     }
   };
 
-  const handleDeleteAccount = (userId: string) => {
-    StorageService.deleteUser(userId);
-    SupabaseService.deleteProfile(userId).catch(err => {
-      console.warn('[App] Supabase deleteProfile error:', err);
-    });
-    setAllUsers(prev => prev.filter(u => u.id !== userId));
-    onSetCurrentUser(null);
+  const handleDeleteAccount = async (userId: string) => {
+    try {
+      // 1. Delete user profile and related rows from Supabase
+      await SupabaseService.deleteProfile(userId).catch(err => {
+        console.warn('[App] Supabase deleteProfile error:', err);
+      });
+
+      // 2. Sign out of Supabase Auth to destroy session tokens
+      if (supabase?.auth) {
+        await supabase.auth.signOut().catch(err => {
+          console.warn('[App] Supabase signOut error on delete:', err);
+        });
+      }
+
+      // 3. Clear local StorageService state and clear entire localStorage
+      StorageService.deleteUser(userId);
+      localStorage.clear();
+      sessionStorage.clear();
+
+      // 4. Update memory state
+      setAllUsers(prev => prev.filter(u => u.id !== userId));
+      onSetCurrentUser(null);
+
+      // 5. Hard redirect to the login/landing route to prevent ghost re-login
+      window.location.replace(window.location.origin);
+    } catch (error) {
+      console.error('[App] Error during account deletion:', error);
+      localStorage.clear();
+      sessionStorage.clear();
+      onSetCurrentUser(null);
+      window.location.replace(window.location.origin);
+    }
   };
 
   const handleUpdateProfile = (updatedUser: GolferUser) => {

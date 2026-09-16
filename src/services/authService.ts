@@ -649,7 +649,7 @@ export const AuthService = {
   /**
    * Permanently deletes account, credentials, and associated golfer data
    */
-  deleteAccount(userId: string): { success: boolean; error?: string } {
+  async deleteAccount(userId: string): Promise<{ success: boolean; error?: string }> {
     try {
       // 1. Remove credentials
       try {
@@ -666,10 +666,23 @@ export const AuthService = {
       // 2. Cascade delete from StorageService
       StorageService.deleteUser(userId);
 
-      // 3. Delete from Supabase
-      SupabaseService.deleteProfile(userId).catch(err => {
-        console.warn('[AuthService] Supabase deleteProfile sync error:', err);
-      });
+      // 3. Delete from Supabase Database
+      if (SupabaseService.isLive() && supabase) {
+        await SupabaseService.deleteProfile(userId).catch(err => {
+          console.warn('[AuthService] Supabase deleteProfile sync error:', err);
+        });
+      }
+
+      // 4. Invalidate Supabase Auth session token
+      if (supabase?.auth) {
+        await supabase.auth.signOut().catch(err => {
+          console.warn('[AuthService] Supabase signOut error:', err);
+        });
+      }
+
+      // 5. Clear all cached storage
+      localStorage.clear();
+      sessionStorage.clear();
 
       return { success: true };
     } catch (e) {
