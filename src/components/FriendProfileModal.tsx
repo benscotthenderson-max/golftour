@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { GolferUser, GolfPost, Tournament } from '../types/golf';
+import { isSameUser } from '../utils/userDedupe';
 import { 
   X, 
   MapPin, 
@@ -57,22 +58,23 @@ export const FriendProfileModal: React.FC<FriendProfileModalProps> = ({
 
   if (!isOpen || !friend) return null;
 
-  const isSelf = friend.id === currentUser.id;
+  const isSelf = isSameUser(friend, currentUser);
 
   // Filter posts authored by or featuring this golfer
   const friendPosts = posts.filter(
-    p => p.authorId === friend.id || p.matchData?.players?.some(player => player.userId === friend.id)
+    p => isSameUser(p.authorId, friend.id) || p.matchData?.players?.some(player => isSameUser(player.userId, friend.id))
   );
 
   // Check if player participated in tournament leaderboard
   const tournamentRanking = tournament?.leaderboard?.playerRankings?.find(
-    p => p.userId === friend.id
+    p => isSameUser(p.userId, friend.id)
   );
   const tournamentTeam = tournamentRanking?.teamId
     ? tournament?.teams.find(t => t.id === tournamentRanking.teamId)
     : null;
 
   const handleSendFriendRequest = () => {
+    if (isSelf) return;
     if (onSendFriendRequest) {
       try {
         confetti({

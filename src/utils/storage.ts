@@ -1,5 +1,6 @@
 import { GolferUser, GolfPost, GolfMatch, FriendRequest, Tournament, FineCategory, PlayerFineRecord } from '../types/golf';
 import { DEFAULT_FINE_CATEGORIES } from './finesEngine';
+import { dedupeUsers, isSameUser } from './userDedupe';
 
 const STORAGE_KEYS = {
   CURRENT_USER: 'golftour_golf_current_user',
@@ -118,7 +119,7 @@ export const StorageService = {
     if (user) {
       safeSet(STORAGE_KEYS.CURRENT_USER, user);
       const all = this.getAllUsers();
-      const existingIdx = all.findIndex(u => u.id === user.id);
+      const existingIdx = all.findIndex(u => isSameUser(u, user));
       if (existingIdx >= 0) {
         all[existingIdx] = user;
       } else {
@@ -132,17 +133,23 @@ export const StorageService = {
 
   getAllUsers(): GolferUser[] {
     this.runAccountResetMigration();
-    return safeParse<GolferUser[]>(STORAGE_KEYS.ALL_USERS, []);
+    const raw = safeParse<GolferUser[]>(STORAGE_KEYS.ALL_USERS, []);
+    const deduped = dedupeUsers(raw);
+    if (deduped.length !== raw.length) {
+      safeSet(STORAGE_KEYS.ALL_USERS, deduped);
+    }
+    return deduped;
   },
 
   getUserById(userId: string): GolferUser | null {
     if (!userId) return null;
     const all = this.getAllUsers();
-    return all.find(u => u.id === userId) || null;
+    return all.find(u => isSameUser(u, userId)) || null;
   },
 
   saveAllUsers(users: GolferUser[]): void {
-    safeSet(STORAGE_KEYS.ALL_USERS, users);
+    const deduped = dedupeUsers(users);
+    safeSet(STORAGE_KEYS.ALL_USERS, deduped);
   },
 
   setAllUsers(users: GolferUser[]): void {
@@ -292,11 +299,13 @@ export const StorageService = {
   },
 
   getFriendRequests(): FriendRequest[] {
-    return safeParse<FriendRequest[]>(STORAGE_KEYS.FRIEND_REQUESTS, []);
+    const all = safeParse<FriendRequest[]>(STORAGE_KEYS.FRIEND_REQUESTS, []);
+    return all.filter(r => !isSameUser(r.requesterId, r.recipientId));
   },
 
   saveFriendRequests(requests: FriendRequest[]): void {
-    safeSet(STORAGE_KEYS.FRIEND_REQUESTS, requests);
+    const clean = requests.filter(r => !isSameUser(r.requesterId, r.recipientId));
+    safeSet(STORAGE_KEYS.FRIEND_REQUESTS, clean);
   },
 
   setFriendRequests(requests: FriendRequest[]): void {
@@ -306,7 +315,7 @@ export const StorageService = {
   getFriendUserIds(userId?: string): string[] {
     if (userId) {
       const userScoped = safeParse<string[] | null>(`${STORAGE_KEYS.FRIENDS}_${userId}`, null);
-      if (userScoped !== null) return userScoped;
+      if (userScoped !== null) return userScoped.filter(id => !isSameUser(id, userId));
     }
     return safeParse<string[]>(STORAGE_KEYS.FRIENDS, []);
   },
@@ -316,10 +325,11 @@ export const StorageService = {
   },
 
   saveFriendUserIds(ids: string[], userId?: string): void {
+    const cleanIds = userId ? ids.filter(id => !isSameUser(id, userId)) : ids;
     if (userId) {
-      safeSet(`${STORAGE_KEYS.FRIENDS}_${userId}`, ids);
+      safeSet(`${STORAGE_KEYS.FRIENDS}_${userId}`, cleanIds);
     } else {
-      safeSet(STORAGE_KEYS.FRIENDS, ids);
+      safeSet(STORAGE_KEYS.FRIENDS, cleanIds);
     }
   },
 

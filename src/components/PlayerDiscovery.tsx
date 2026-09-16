@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { SupabaseService } from '../services/supabaseService';
+import { dedupeUsers, isSameUser } from '../utils/userDedupe';
 
 interface PlayerDiscoveryProps {
   currentUser: GolferUser;
@@ -89,24 +90,24 @@ export const PlayerDiscovery: React.FC<PlayerDiscoveryProps> = ({
     };
   }, [searchQuery, currentUser.id]);
 
-  const pendingRequests = friendRequests.filter(r => r.recipientId === currentUser.id && r.status === 'pending');
-  const otherUsers = allUsers.filter(u => u.id !== currentUser.id);
+  const pendingRequests = friendRequests.filter(r => 
+    r.recipientId === currentUser.id && 
+    r.status === 'pending' &&
+    !isSameUser(r.requester, currentUser) &&
+    !isSameUser(r.requesterId, currentUser.id)
+  );
 
-  // Merge local golfers with global Supabase search results
-  const mergedGolfersMap = new Map<string, GolferUser>();
-  otherUsers.forEach(u => mergedGolfersMap.set(u.id, u));
-  // Live global Supabase profiles take priority and update any stale local records
-  globalProfiles.forEach(u => {
-    if (u.id !== currentUser.id) {
-      mergedGolfersMap.set(u.id, u);
-    }
-  });
-  const allAvailableGolfers = Array.from(mergedGolfersMap.values());
+  // Filter out any user record representing the current user (by ID, email, or username)
+  const otherUsers = allUsers.filter(u => !isSameUser(u, currentUser));
+  const otherGlobal = globalProfiles.filter(u => !isSameUser(u, currentUser));
+
+  // Merge and deduplicate all golfers (global takes priority for fresh live data)
+  const allAvailableGolfers = dedupeUsers([...otherGlobal, ...otherUsers]).filter(u => !isSameUser(u, currentUser));
 
   const filteredGolfers = allAvailableGolfers.filter(u => {
     // Search match
     if (searchQuery.trim()) {
-      const isFromLiveSupabase = globalProfiles.some(g => g.id === u.id);
+      const isFromLiveSupabase = globalProfiles.some(g => isSameUser(g, u));
       if (!isFromLiveSupabase) {
         const q = searchQuery.toLowerCase();
         const matchName = u.displayName.toLowerCase().includes(q) || u.username.toLowerCase().includes(q) || (u.homeClubName && u.homeClubName.toLowerCase().includes(q));
@@ -119,7 +120,8 @@ export const PlayerDiscovery: React.FC<PlayerDiscoveryProps> = ({
     if (handicapFilter === 'mid' && (u.handicapIndex < 10 || u.handicapIndex > 20)) return false;
     if (handicapFilter === 'high' && u.handicapIndex <= 20) return false;
 
-    if (activeTab === 'my_friends' && !friendUserIds.has(u.id)) return false;
+    const isFriend = Array.from(friendUserIds).some(id => isSameUser(id, u.id) || isSameUser(id, u));
+    if (activeTab === 'my_friends' && !isFriend) return false;
 
     return true;
   });
@@ -374,9 +376,10 @@ export const PlayerDiscovery: React.FC<PlayerDiscoveryProps> = ({
               </div>
             ) : (
               filteredGolfers.map(golfer => {
-                const isFriend = friendUserIds.has(golfer.id);
-                const isPendingSent = pendingSentUserIds.has(golfer.id);
-                const isFollowing = followedUserIds.has(golfer.id);
+                const isFriend = Array.from(friendUserIds).some(id => isSameUser(id, golfer.id) || isSameUser(id, golfer));
+                const isPendingSent = Array.from(pendingSentUserIds).some(id => isSameUser(id, golfer.id) || isSameUser(id, golfer));
+                const isFollowing = Array.from(followedUserIds).some(id => isSameUser(id, golfer.id) || isSameUser(id, golfer));
+                const isSelf = isSameUser(golfer, currentUser);
 
                 return (
                   <div
@@ -437,16 +440,18 @@ export const PlayerDiscovery: React.FC<PlayerDiscoveryProps> = ({
                     {/* Action Bar */}
                     <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <button
-                          onClick={() => onToggleFollow(golfer.id)}
-                          className={`text-xs font-bold py-1.5 px-3 rounded-xl transition cursor-pointer ${
-                            isFollowing
-                              ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                              : 'text-slate-600 hover:text-slate-900 border border-slate-200'
-                          }`}
-                        >
-                          {isFollowing ? 'Following' : '+ Follow'}
-                        </button>
+                        {!isSelf && (
+                          <button
+                            onClick={() => onToggleFollow(golfer.id)}
+                            className={`text-xs font-bold py-1.5 px-3 rounded-xl transition cursor-pointer ${
+                              isFollowing
+                                ? 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                                : 'text-slate-600 hover:text-slate-900 border border-slate-200'
+                            }`}
+                          >
+                            {isFollowing ? 'Following' : '+ Follow'}
+                          </button>
+                        )}
                         <button
                           type="button"
                           onClick={() => onSelectGolfer && onSelectGolfer(golfer)}
@@ -457,7 +462,11 @@ export const PlayerDiscovery: React.FC<PlayerDiscoveryProps> = ({
                       </div>
 
                       <div className="flex items-center gap-2">
-                        {isFriend ? (
+                        {isSelf ? (
+                          <span className="py-1.5 px-3 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold border border-slate-200">
+                            Your Profile
+                          </span>
+                        ) : isFriend ? (
                           <span className="py-1.5 px-3 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-200 text-xs font-black flex items-center gap-1">
                             <UserCheck className="w-3.5 h-3.5" /> Friends
                           </span>

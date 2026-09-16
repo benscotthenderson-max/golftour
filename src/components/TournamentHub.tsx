@@ -185,7 +185,7 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
     }
 
     setIsLoadingTournaments(true);
-    SupabaseService.fetchUserTournaments(currentUser.id)
+    SupabaseService.fetchUserTournaments(currentUser)
       .then((remoteTournaments) => {
         if (!isMounted) return;
         setUserTournaments(remoteTournaments);
@@ -207,7 +207,7 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
     // Real-time listener for tournament changes (live scoring, drafts, pairings)
     const unsubscribe = SupabaseService.subscribeToTournaments((updatedTour) => {
       if (!isMounted) return;
-      if (isUserInTournament(updatedTour, currentUser.id)) {
+      if (isUserInTournament(updatedTour, currentUser)) {
         setUserTournaments(prev => {
           const exists = prev.some(t => t.id === updatedTour.id);
           if (exists) {

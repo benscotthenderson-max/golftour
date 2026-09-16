@@ -4,6 +4,7 @@ import { MOCK_COURSES } from './data/mockData';
 import { StorageService } from './utils/storage';
 import { AuthService } from './services/authService';
 import { SupabaseService } from './services/supabaseService';
+import { dedupeUsers, isSameUser } from './utils/userDedupe';
 import { supabase } from './lib/supabase';
 import { HeaderNav, ViewMode } from './components/HeaderNav';
 import { MobileSimulator, TabType } from './components/MobileSimulator';
@@ -67,10 +68,7 @@ function AppContent({
         const remoteProfiles = await SupabaseService.fetchProfiles();
         if (!isCancelled && remoteProfiles.length > 0) {
           setAllUsers(prev => {
-            const map = new Map<string, GolferUser>();
-            prev.forEach(u => map.set(u.id, u));
-            remoteProfiles.forEach(u => map.set(u.id, u));
-            const merged = Array.from(map.values());
+            const merged = dedupeUsers([...remoteProfiles, ...prev]);
             StorageService.saveAllUsers(merged);
             return merged;
           });
@@ -161,12 +159,16 @@ function AppContent({
 
   // Helper to open interactive profile modal for any player
   const handleOpenPlayerProfile = (userId: string) => {
-    if (userId === currentUser?.id) {
+    if (isSameUser(userId, currentUser?.id)) {
       setMobileTab('profile');
       return;
     }
-    const target = allUsers.find(u => u.id === userId);
+    const target = allUsers.find(u => isSameUser(u, userId));
     if (target) {
+      if (isSameUser(target, currentUser)) {
+        setMobileTab('profile');
+        return;
+      }
       setSelectedGolferForProfile(target);
     }
   };
@@ -282,12 +284,19 @@ function AppContent({
   };
 
   const handleSendFriendRequest = (targetUserId: string, targetUserParam?: GolferUser) => {
-    let targetUser = targetUserParam || allUsers.find(u => u.id === targetUserId);
+    let targetUser = targetUserParam || allUsers.find(u => isSameUser(u, targetUserId));
     if (!targetUser) {
       targetUser = StorageService.getUserById(targetUserId) || undefined;
     }
-    if (targetUser && !allUsers.some(u => u.id === targetUser!.id)) {
-      const updatedUsers = [...allUsers, targetUser];
+
+    // Guard against self-friending
+    if (isSameUser({ id: targetUserId, ...targetUser }, currentUser)) {
+      console.warn('[App] Blocked self-friend request attempt for user:', targetUserId);
+      return;
+    }
+
+    if (targetUser && !allUsers.some(u => isSameUser(u, targetUser!))) {
+      const updatedUsers = dedupeUsers([...allUsers, targetUser]);
       setAllUsers(updatedUsers);
       StorageService.saveAllUsers(updatedUsers);
     }
@@ -318,6 +327,11 @@ function AppContent({
   };
 
   const handleAcceptFriendRequest = (requestId: string, requesterId: string) => {
+    if (isSameUser(requesterId, currentUser)) {
+      console.warn('[App] Blocked accepting friend request from self:', requesterId);
+      return;
+    }
+
     setFriendRequests(prev => {
       const updated = prev.map(r => (r.id === requestId ? { ...r, status: 'accepted' as const, updatedAt: new Date().toISOString() } : r));
       StorageService.saveFriendRequests(updated);

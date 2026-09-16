@@ -8,6 +8,7 @@ import {
   Tournament 
 } from '../types/golf';
 import { StorageService } from '../utils/storage';
+import { getUserSearchTokens, dedupeUsers, isSameUser } from '../utils/userDedupe';
 
 /**
  * Data Mapper utilities converting between Supabase PostgreSQL snake_case rows
@@ -190,7 +191,26 @@ function mapFriendshipRowToRequest(row: any, userMap?: Map<string, GolferUser>):
   };
 }
 
+function safeJsonParse<T>(val: any, fallback: T): T {
+  if (val === null || val === undefined) return fallback;
+  if (typeof val === 'string') {
+    try {
+      const parsed = JSON.parse(val);
+      return parsed !== null && parsed !== undefined ? parsed : fallback;
+    } catch {
+      return fallback;
+    }
+  }
+  return val;
+}
+
 function mapTournamentRowToTournament(row: any): Tournament {
+  const teams = safeJsonParse<any[]>(row.teams, []);
+  const rounds = safeJsonParse<any[]>(row.rounds, []);
+  const scoringRule = safeJsonParse<any>(row.scoring_rule, { pointsPerWin: 1, pointsPerTie: 0.5, pointsPerLoss: 0, clinchThresholdRule: 'majority_plus_half' });
+  const leaderboard = safeJsonParse<any>(row.leaderboard, { totalPointsAvailable: 28, clinchPointsThreshold: 14.5, isClinched: false, teamStandings: [], playerRankings: [] });
+  const feedSharingPreferences = safeJsonParse<Record<string, boolean>>(row.feed_sharing_preferences, {});
+
   return {
     id: row.id,
     name: row.name,
@@ -208,12 +228,12 @@ function mapTournamentRowToTournament(row: any): Tournament {
     playersCount: Number(row.players_count ?? 16),
     totalPoints: Number(row.total_points ?? 28),
     clinchPoints: Number(row.clinch_points ?? 14.5),
-    teams: Array.isArray(row.teams) ? row.teams : [],
-    rounds: Array.isArray(row.rounds) ? row.rounds : [],
-    scoringRule: row.scoring_rule || { pointsPerWin: 1, pointsPerTie: 0.5, pointsPerLoss: 0, clinchThresholdRule: 'majority_plus_half' },
-    leaderboard: row.leaderboard || { totalPointsAvailable: 28, clinchPointsThreshold: 14.5, isClinched: false, teamStandings: [], playerRankings: [] },
+    teams: Array.isArray(teams) ? teams : [],
+    rounds: Array.isArray(rounds) ? rounds : [],
+    scoringRule,
+    leaderboard,
     finesModeEnabled: row.fines_mode_enabled !== false,
-    feedSharingPreferences: row.feed_sharing_preferences || {},
+    feedSharingPreferences,
     createdAt: row.created_at || new Date().toISOString(),
     updatedAt: row.updated_at || new Date().toISOString(),
   };
@@ -248,33 +268,128 @@ function mapTournamentToRow(t: Tournament): any {
   };
 }
 
-export function isUserInTournament(t: Tournament, userId: string): boolean {
-  if (!userId || !t) return false;
-  if (t.organizerId === userId || t.creatorId === userId) return true;
+export function isUserInTournament(t: Tournament, userOrId: string | GolferUser | Partial<GolferUser> | null | undefined): boolean {
+  if (!userOrId || !t) return false;
 
-  // Check team captains and player rosters
-  if (Array.isArray(t.teams)) {
-    for (const team of t.teams) {
-      if (team.captainId === userId) return true;
-      if (Array.isArray(team.playerIds) && team.playerIds.includes(userId)) return true;
-    }
+  const allUsers = StorageService.getAllUsers();
+  const tokens = getUserSearchTokens(userOrId, allUsers);
+  if (tokens.size === 0) return false;
+
+  const matchesToken = (val?: string | null): boolean => {
+    if (!val || typeof val !== 'string') return false;
+    const clean = val.trim().toLowerCase();
+    const cleanHandle = clean.replace(/^@+/, '');
+    return tokens.has(clean) || tokens.has(cleanHandle);
+  };
+
+  // 1. Check Creator & Organizer
+  if (matchesToken(t.organizerId) || matchesToken(t.creatorId) || matchesToken(t.organizerName)) {
+    return true;
   }
 
-  // Check round matches
-  if (Array.isArray(t.rounds)) {
-    for (const round of t.rounds) {
-      if (Array.isArray(round.matches)) {
-        for (const match of round.matches) {
-          if (match.sideA?.playerIds?.includes(userId) || match.sideB?.playerIds?.includes(userId)) return true;
-          if (match.sideA?.players?.some(p => p.userId === userId) || match.sideB?.players?.some(p => p.userId === userId)) return true;
+  // 2. Check Teams (Captains & Player Rosters)
+  const teams = Array.isArray(t.teams) ? t.teams : safeJsonParse<any[]>(t.teams, []);
+  if (Array.isArray(teams)) {
+    for (const team of teams) {
+      if (!team) continue;
+      if (matchesToken(team.captainId) || matchesToken(team.captainName)) return true;
+
+      if (Array.isArray(team.playerIds)) {
+        for (const pid of team.playerIds) {
+          if (matchesToken(pid)) return true;
+        }
+      }
+
+      // Check full player objects if present on team
+      if (Array.isArray((team as any).players)) {
+        for (const p of (team as any).players) {
+          if (!p) continue;
+          if (matchesToken(p.id) || matchesToken(p.userId) || matchesToken(p.email) || matchesToken(p.username) || matchesToken(p.displayName)) {
+            return true;
+          }
         }
       }
     }
   }
 
-  // Check feed sharing preferences
-  if (t.feedSharingPreferences && t.feedSharingPreferences[userId] !== undefined) {
-    return true;
+  // 3. Check Rounds & Flight Matches
+  const rounds = Array.isArray(t.rounds) ? t.rounds : safeJsonParse<any[]>(t.rounds, []);
+  if (Array.isArray(rounds)) {
+    for (const round of rounds) {
+      if (!round || !Array.isArray(round.matches)) continue;
+      for (const match of round.matches) {
+        if (!match) continue;
+
+        // Check Side A & Side B playerIds and player records
+        for (const side of [match.sideA, match.sideB]) {
+          if (!side) continue;
+          if (Array.isArray(side.playerIds)) {
+            for (const pid of side.playerIds) {
+              if (matchesToken(pid)) return true;
+            }
+          }
+
+          if (Array.isArray(side.players)) {
+            for (const p of side.players) {
+              if (!p) continue;
+              if (matchesToken(p.userId) || matchesToken((p as any).id) || matchesToken((p as any).email) || matchesToken(p.username) || matchesToken(p.displayName)) {
+                return true;
+              }
+            }
+          }
+
+          if (side.label && typeof side.label === 'string') {
+            const sideLabelLower = side.label.toLowerCase();
+            for (const token of tokens) {
+              if (token.length >= 3 && sideLabelLower.includes(token)) {
+                return true;
+              }
+            }
+          }
+        }
+
+        // Check playerScores keys in hole results
+        if (match.holeResults) {
+          for (const holeKey of Object.keys(match.holeResults)) {
+            const hole = match.holeResults[Number(holeKey)];
+            if (hole?.playerScores) {
+              for (const pid of Object.keys(hole.playerScores)) {
+                if (matchesToken(pid)) return true;
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // 4. Check Tournament Leaderboard Player Rankings
+  const leaderboard = typeof t.leaderboard === 'object' && t.leaderboard ? t.leaderboard : safeJsonParse<any>(t.leaderboard, null);
+  if (leaderboard && Array.isArray(leaderboard.playerRankings)) {
+    for (const p of leaderboard.playerRankings) {
+      if (!p) continue;
+      if (matchesToken(p.userId) || matchesToken(p.username) || matchesToken(p.displayName)) {
+        return true;
+      }
+    }
+  }
+
+  // 5. Check Feed Sharing Preferences
+  const feedPrefs = typeof t.feedSharingPreferences === 'object' && t.feedSharingPreferences ? t.feedSharingPreferences : safeJsonParse<Record<string, boolean>>(t.feedSharingPreferences, {});
+  if (feedPrefs) {
+    for (const key of Object.keys(feedPrefs)) {
+      if (matchesToken(key)) return true;
+    }
+  }
+
+  // 6. Check Fines Records
+  if (Array.isArray(t.fines)) {
+    for (const fine of t.fines) {
+      if (!fine) continue;
+      if (matchesToken(fine.userId) || matchesToken(fine.userName)) {
+        return true;
+      }
+    }
   }
 
   return false;
@@ -308,7 +423,7 @@ export const SupabaseService = {
       }
 
       if (data && data.length > 0) {
-        const users = data.map(mapProfileRowToUser);
+        const users = dedupeUsers(data.map(mapProfileRowToUser));
         // Synchronize into local storage cache
         StorageService.saveAllUsers(users);
         return users;
@@ -407,13 +522,13 @@ export const SupabaseService = {
       if (queryError) {
         console.warn('[SupabaseService] searchProfiles query failed:', queryError.message);
         const allLocal = StorageService.getAllUsers();
-        return allLocal.filter(u => 
+        return dedupeUsers(allLocal.filter(u => 
           u.username.toLowerCase().includes(cleanQuery) ||
           u.displayName.toLowerCase().includes(cleanQuery)
-        );
+        ));
       }
 
-      return (data || []).map(mapProfileRowToUser);
+      return dedupeUsers((data || []).map(mapProfileRowToUser));
     } catch (err) {
       console.error('[SupabaseService] searchProfiles exception:', err);
       return [];
@@ -629,6 +744,16 @@ export const SupabaseService = {
   },
 
   async sendFriendRequest(req: FriendRequest): Promise<void> {
+    // Guard against self-friending
+    if (!req.requesterId || !req.recipientId || isSameUser(req.requesterId, req.recipientId)) {
+      console.warn('[SupabaseService] Refusing to send friend request to self:', req);
+      return;
+    }
+    if (req.requester && req.recipient && isSameUser(req.requester, req.recipient)) {
+      console.warn('[SupabaseService] Refusing to send friend request to matching profile:', req);
+      return;
+    }
+
     // 1. Update local cache
     const current = StorageService.getFriendRequests();
     if (!current.some(r => r.id === req.id)) {
@@ -974,7 +1099,8 @@ export const SupabaseService = {
     }
   },
 
-  async fetchUserTournaments(userId: string): Promise<Tournament[]> {
+  async fetchUserTournaments(userOrId: string | GolferUser | Partial<GolferUser>): Promise<Tournament[]> {
+    const userId = typeof userOrId === 'string' ? userOrId : (userOrId?.id || '');
     const local = StorageService.getUserTournaments(userId);
     if (!this.isLive() || !supabase || !userId) {
       return local;
@@ -994,7 +1120,7 @@ export const SupabaseService = {
       if (data && data.length > 0) {
         const allTournaments = data.map(mapTournamentRowToTournament);
         // Filter tournaments where the user is creator, organizer, captain, team player, or match participant
-        const userTournaments = allTournaments.filter(t => isUserInTournament(t, userId));
+        const userTournaments = allTournaments.filter(t => isUserInTournament(t, userOrId));
 
         // Cache locally for fast offline access
         userTournaments.forEach(t => StorageService.saveTournament(t, userId));
