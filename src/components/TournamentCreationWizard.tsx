@@ -33,14 +33,15 @@ import {
   AlertCircle,
   X,
   Share2,
-  Crown
+  Crown,
+  Loader2
 } from 'lucide-react';
 
 interface TournamentCreationWizardProps {
   currentUser: GolferUser;
   allUsers?: GolferUser[];
   onClose: () => void;
-  onTournamentCreated: (newTournament: Tournament) => void;
+  onTournamentCreated: (newTournament: Tournament) => void | Promise<void>;
 }
 
 export const TournamentCreationWizard: React.FC<TournamentCreationWizardProps> = ({
@@ -61,6 +62,7 @@ export const TournamentCreationWizard: React.FC<TournamentCreationWizardProps> =
     [currentUser.id]: true,
   });
   const [selectedUserToAdd, setSelectedUserToAdd] = useState<string>('');
+  const [isSaving, setIsSaving] = useState<boolean>(false);
 
   // Step 1: Basics
   const [tournamentName, setTournamentName] = useState('Championship Matchplay 2026');
@@ -371,7 +373,7 @@ export const TournamentCreationWizard: React.FC<TournamentCreationWizardProps> =
     return roundsConfig.reduce((sum, r) => sum + r.points, 0);
   };
 
-  const handleFinishWizard = () => {
+  const handleFinishWizard = async () => {
     const tourId = `tour-custom-${Date.now()}`;
     const totalPoints = calculateTotalPoints();
     const clinchPoints = Math.floor(totalPoints / 2) + 0.5;
@@ -587,7 +589,14 @@ export const TournamentCreationWizard: React.FC<TournamentCreationWizardProps> =
     };
 
     newTournament.leaderboard = recalculateTournamentLeaderboard(newTournament, finalPool);
-    onTournamentCreated(newTournament);
+    setIsSaving(true);
+    try {
+      await onTournamentCreated(newTournament);
+    } catch (err) {
+      console.error('[TournamentCreationWizard] Error creating tournament:', err);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -1565,10 +1574,23 @@ export const TournamentCreationWizard: React.FC<TournamentCreationWizardProps> =
             <button
               type="button"
               id="launch-tournament-btn"
+              disabled={isSaving}
               onClick={handleFinishWizard}
-              className="py-2.5 px-6 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black flex items-center gap-1.5 transition shadow-lg shadow-emerald-500/20 cursor-pointer"
+              className={`py-2.5 px-6 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black flex items-center gap-1.5 transition shadow-lg shadow-emerald-500/20 cursor-pointer ${
+                isSaving ? 'opacity-70 cursor-wait' : ''
+              }`}
             >
-              <Sparkles className="w-4 h-4" /> Launch Tournament & Live Leaderboard
+              {isSaving ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span>Saving to Supabase...</span>
+                </>
+              ) : (
+                <>
+                  <Sparkles className="w-4 h-4" />
+                  <span>Launch Tournament & Live Leaderboard</span>
+                </>
+              )}
             </button>
           )}
         </div>

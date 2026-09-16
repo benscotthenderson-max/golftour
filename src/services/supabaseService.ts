@@ -248,6 +248,38 @@ function mapTournamentToRow(t: Tournament): any {
   };
 }
 
+export function isUserInTournament(t: Tournament, userId: string): boolean {
+  if (!userId || !t) return false;
+  if (t.organizerId === userId || t.creatorId === userId) return true;
+
+  // Check team captains and player rosters
+  if (Array.isArray(t.teams)) {
+    for (const team of t.teams) {
+      if (team.captainId === userId) return true;
+      if (Array.isArray(team.playerIds) && team.playerIds.includes(userId)) return true;
+    }
+  }
+
+  // Check round matches
+  if (Array.isArray(t.rounds)) {
+    for (const round of t.rounds) {
+      if (Array.isArray(round.matches)) {
+        for (const match of round.matches) {
+          if (match.sideA?.playerIds?.includes(userId) || match.sideB?.playerIds?.includes(userId)) return true;
+          if (match.sideA?.players?.some(p => p.userId === userId) || match.sideB?.players?.some(p => p.userId === userId)) return true;
+        }
+      }
+    }
+  }
+
+  // Check feed sharing preferences
+  if (t.feedSharingPreferences && t.feedSharingPreferences[userId] !== undefined) {
+    return true;
+  }
+
+  return false;
+}
+
 export const SupabaseService = {
   // ==========================================
   // STATUS & CONNECTIVITY
@@ -878,21 +910,68 @@ export const SupabaseService = {
     }
   },
 
-  async upsertTournament(tournament: Tournament, userId?: string): Promise<Tournament> {
+  async upsertTournament(tournament: Tournament, userId?: string): Promise<{ tournament: Tournament; error?: any }> {
     // 1. Local update
     StorageService.saveTournament(tournament, userId);
 
-    // 2. Remote update
+    // 2. Remote update to Supabase
     if (this.isLive() && supabase) {
       try {
         const row = mapTournamentToRow(tournament);
-        await supabase.from('tournaments').upsert(row, { onConflict: 'id' });
-      } catch (err) {
-        console.warn('[SupabaseService] upsertTournament error:', err);
+        console.log('[SupabaseService] Upserting tournament row to Supabase:', row.id, row.name);
+
+        let { error } = await supabase.from('tournaments').upsert(row, { onConflict: 'id' });
+
+        // Fallback 1: Missing feed_sharing_preferences column
+        if (error && (error.code === '42703' || error.message?.includes('feed_sharing_preferences'))) {
+          console.warn('[SupabaseService] Column feed_sharing_preferences missing. Retrying without it...');
+          const sanitizedRow = { ...row };
+          delete sanitizedRow.feed_sharing_preferences;
+          const retryRes = await supabase.from('tournaments').upsert(sanitizedRow, { onConflict: 'id' });
+          error = retryRes.error;
+        }
+
+        // Fallback 2: Foreign key violation on organizer_id
+        if (error && (error.code === '23503' || error.message?.includes('organizer_id'))) {
+          console.warn('[SupabaseService] Foreign key on organizer_id failed. Retrying with null organizer_id...');
+          const sanitizedRow = { ...row, organizer_id: null };
+          delete sanitizedRow.feed_sharing_preferences;
+          const retryRes = await supabase.from('tournaments').upsert(sanitizedRow, { onConflict: 'id' });
+          error = retryRes.error;
+        }
+
+        if (error) {
+          console.error('[SupabaseService] Supabase upsertTournament error:', error.message || error);
+          return { tournament, error };
+        }
+
+        console.log('[SupabaseService] Tournament successfully persisted to Supabase:', tournament.id);
+        return { tournament };
+      } catch (err: any) {
+        console.error('[SupabaseService] upsertTournament exception:', err);
+        return { tournament, error: err };
       }
     }
 
-    return tournament;
+    return { tournament };
+  },
+
+  async deleteTournament(tournamentId: string, userId?: string): Promise<boolean> {
+    StorageService.deleteTournament(tournamentId, userId);
+    if (!this.isLive() || !supabase || !tournamentId) {
+      return true;
+    }
+    try {
+      const { error } = await supabase.from('tournaments').delete().eq('id', tournamentId);
+      if (error) {
+        console.warn('[SupabaseService] deleteTournament error:', error);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.warn('[SupabaseService] deleteTournament exception:', err);
+      return false;
+    }
   },
 
   async fetchUserTournaments(userId: string): Promise<Tournament[]> {
@@ -914,13 +993,22 @@ export const SupabaseService = {
 
       if (data && data.length > 0) {
         const allTournaments = data.map(mapTournamentRowToTournament);
-        const userTournaments = allTournaments.filter(t => 
-          t.organizerId === userId || 
-          t.creatorId === userId || 
-          (Array.isArray(t.teams) && t.teams.some(team => Array.isArray(team.playerIds) && team.playerIds.includes(userId)))
-        );
+        // Filter tournaments where the user is creator, organizer, captain, team player, or match participant
+        const userTournaments = allTournaments.filter(t => isUserInTournament(t, userId));
+
+        // Cache locally for fast offline access
         userTournaments.forEach(t => StorageService.saveTournament(t, userId));
-        return userTournaments.length > 0 ? userTournaments : local;
+
+        // Merge with any offline-created local tournaments
+        const map = new Map<string, Tournament>();
+        userTournaments.forEach(t => map.set(t.id, t));
+        local.forEach(t => {
+          if (!map.has(t.id)) map.set(t.id, t);
+        });
+
+        return Array.from(map.values()).sort(
+          (a, b) => new Date(b.updatedAt || b.createdAt).getTime() - new Date(a.updatedAt || a.createdAt).getTime()
+        );
       }
 
       return local;
@@ -933,6 +1021,28 @@ export const SupabaseService = {
   // ==========================================
   // REAL-TIME SUBSCRIPTIONS
   // ==========================================
+  subscribeToTournaments(onUpdate: (tournament: Tournament) => void): (() => void) | null {
+    if (!this.isLive() || !supabase) return null;
+
+    try {
+      const channel = supabase
+        .channel('public:tournaments')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'tournaments' }, payload => {
+          if (payload.new) {
+            const tour = mapTournamentRowToTournament(payload.new);
+            onUpdate(tour);
+          }
+        })
+        .subscribe();
+
+      return () => {
+        supabase?.removeChannel(channel);
+      };
+    } catch (err) {
+      console.warn('[SupabaseService] Real-time tournaments subscription error:', err);
+      return null;
+    }
+  },
   subscribeToFeed(onNewPost: (post: GolfPost) => void): (() => void) | null {
     if (!this.isLive() || !supabase) return null;
 

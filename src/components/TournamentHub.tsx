@@ -39,9 +39,11 @@ import {
   Eye,
   Camera,
   Share2,
-  X
+  X,
+  Loader2
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
+import { SupabaseService, isUserInTournament } from '../services/supabaseService';
 import { TournamentCreationWizard } from './TournamentCreationWizard';
 import { TournamentMatchScorecardModal } from './TournamentMatchScorecardModal';
 import { TournamentRoundPairingsModal } from './TournamentRoundPairingsModal';
@@ -140,13 +142,95 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
   onOpenPlayerProfile,
   onOpenVerifyModal,
 }) => {
-  const [tournament, setTournament] = useState<Tournament | null>(() => {
-    return StorageService.getTournament(currentUser.id);
+  const [userTournaments, setUserTournaments] = useState<Tournament[]>(() => {
+    return StorageService.getUserTournaments(currentUser.id);
   });
+  const [tournament, setTournament] = useState<Tournament | null>(() => {
+    const active = StorageService.getTournament(currentUser.id);
+    if (active) return active;
+    const history = StorageService.getUserTournaments(currentUser.id);
+    return history.length > 0 ? history[0] : null;
+  });
+  const [isLoadingTournaments, setIsLoadingTournaments] = useState<boolean>(false);
 
-  // Re-synchronize tournament if logged-in user changes
+  // Helper to determine the golfer's role in a tournament
+  const getUserRoleInTournament = (tour: Tournament, userId: string): { label: string; badgeColor: string; isCreator: boolean } => {
+    if (tour.creatorId === userId || tour.organizerId === userId) {
+      return { label: 'Host & Director', badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/40', isCreator: true };
+    }
+    const teamA = tour.teams?.[0];
+    const teamB = tour.teams?.[1];
+    if (teamA?.captainId === userId) {
+      return { label: `Captain • ${teamA.name}`, badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40', isCreator: false };
+    }
+    if (teamB?.captainId === userId) {
+      return { label: `Captain • ${teamB.name}`, badgeColor: 'bg-sky-500/20 text-sky-300 border-sky-500/40', isCreator: false };
+    }
+    if (teamA?.playerIds?.includes(userId)) {
+      return { label: `Player • ${teamA.name}`, badgeColor: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40', isCreator: false };
+    }
+    if (teamB?.playerIds?.includes(userId)) {
+      return { label: `Player • ${teamB.name}`, badgeColor: 'bg-sky-500/20 text-sky-300 border-sky-500/40', isCreator: false };
+    }
+    return { label: 'Participant', badgeColor: 'bg-slate-500/20 text-slate-300 border-slate-500/40', isCreator: false };
+  };
+
+  // Fetch all tournaments where user is creator OR participant/drafted player from Supabase
   useEffect(() => {
-    setTournament(StorageService.getTournament(currentUser.id));
+    let isMounted = true;
+    const local = StorageService.getUserTournaments(currentUser.id);
+    setUserTournaments(local);
+    if (!tournament && local.length > 0) {
+      setTournament(local[0]);
+    }
+
+    setIsLoadingTournaments(true);
+    SupabaseService.fetchUserTournaments(currentUser.id)
+      .then((remoteTournaments) => {
+        if (!isMounted) return;
+        setUserTournaments(remoteTournaments);
+        if (remoteTournaments.length > 0) {
+          setTournament(prev => {
+            if (!prev) return remoteTournaments[0];
+            const updated = remoteTournaments.find(t => t.id === prev.id);
+            return updated || remoteTournaments[0];
+          });
+        }
+      })
+      .catch(err => {
+        console.warn('[TournamentHub] Failed to fetch user tournaments from Supabase:', err);
+      })
+      .finally(() => {
+        if (isMounted) setIsLoadingTournaments(false);
+      });
+
+    // Real-time listener for tournament changes (live scoring, drafts, pairings)
+    const unsubscribe = SupabaseService.subscribeToTournaments((updatedTour) => {
+      if (!isMounted) return;
+      if (isUserInTournament(updatedTour, currentUser.id)) {
+        setUserTournaments(prev => {
+          const exists = prev.some(t => t.id === updatedTour.id);
+          if (exists) {
+            return prev.map(t => (t.id === updatedTour.id ? updatedTour : t));
+          } else {
+            return [updatedTour, ...prev];
+          }
+        });
+        setTournament(prev => {
+          if (prev?.id === updatedTour.id) {
+            return updatedTour;
+          }
+          if (!prev) return updatedTour;
+          return prev;
+        });
+        StorageService.saveTournament(updatedTour, currentUser.id);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      if (unsubscribe) unsubscribe();
+    };
   }, [currentUser.id]);
 
   const [selectedRoundTab, setSelectedRoundTab] = useState<number>(1);
@@ -181,6 +265,9 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
         updatedAt: new Date().toISOString(),
       };
       StorageService.saveTournament(updatedTour, currentUser.id);
+      SupabaseService.upsertTournament(updatedTour, currentUser.id).catch(err => {
+        console.warn('[TournamentHub] Feed share preference sync error:', err);
+      });
       return updatedTour;
     });
   };
@@ -220,6 +307,13 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
       };
       updatedTour.leaderboard = recalculateTournamentLeaderboard(updatedTour, allUsers);
       StorageService.saveTournament(updatedTour, currentUser.id);
+      setUserTournaments(prev => prev.map(t => (t.id === updatedTour.id ? updatedTour : t)));
+
+      // Sync to Supabase
+      SupabaseService.upsertTournament(updatedTour, currentUser.id).catch(err => {
+        console.warn('[TournamentHub] Failed to sync round pairings to Supabase:', err);
+      });
+
       return updatedTour;
     });
     setEditingRoundPairings(null);
@@ -244,10 +338,15 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
 
       updatedTour.leaderboard = recalculateTournamentLeaderboard(updatedTour, allUsers);
       StorageService.saveTournament(updatedTour, currentUser.id);
+      setUserTournaments(prev => prev.map(t => (t.id === updatedTour.id ? updatedTour : t)));
+
+      // Sync updated scorecard to Supabase in real-time
+      SupabaseService.upsertTournament(updatedTour, currentUser.id).catch(err => {
+        console.warn('[TournamentHub] Failed to sync match scorecard update to Supabase:', err);
+      });
 
       const curRound = updatedTour.rounds.find(r => r.id === updatedMatch.roundId) || selectedScorecardMatch?.round;
       if (curRound) {
-        // Real-time live score updates to social feed for opted-in players
         TournamentFeedService.syncLiveMatchFeed(updatedTour, curRound, updatedMatch, allUsers);
       }
 
@@ -259,11 +358,26 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
     });
   };
 
-  const handleTournamentCreated = (newTournament: Tournament) => {
+  const handleTournamentCreated = async (newTournament: Tournament) => {
+    // 1. Immediate UI update
     setTournament(newTournament);
+    setUserTournaments(prev => [newTournament, ...prev.filter(t => t.id !== newTournament.id)]);
     StorageService.saveTournament(newTournament, currentUser.id);
     setIsWizardOpen(false);
     setSelectedRoundTab(1);
+
+    // 2. Persist row to Supabase tournaments table
+    try {
+      const res = await SupabaseService.upsertTournament(newTournament, currentUser.id);
+      if (res.error) {
+        console.warn('[TournamentHub] Supabase upsert returned error:', res.error);
+      } else {
+        console.log('[TournamentHub] Successfully synced tournament to Supabase:', newTournament.id);
+      }
+    } catch (err) {
+      console.error('[TournamentHub] Failed to save tournament to Supabase:', err);
+    }
+
     try {
       confetti({
         particleCount: 50,
@@ -275,10 +389,45 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
     }
   };
 
-  const handleResetTournament = () => {
-    setTournament(null);
-    StorageService.saveTournament(null, currentUser.id);
+  const handleSelectTournament = (selected: Tournament) => {
+    setTournament(selected);
+    StorageService.saveTournament(selected, currentUser.id);
+    setSelectedRoundTab(1);
   };
+
+  const handleResetTournament = async () => {
+    if (!tournament) return;
+    const tourIdToDelete = tournament.id;
+    const isHost = tournament.creatorId === currentUser.id || tournament.organizerId === currentUser.id;
+
+    // Remove locally
+    StorageService.deleteTournament(tourIdToDelete, currentUser.id);
+    const remaining = userTournaments.filter(t => t.id !== tourIdToDelete);
+    setUserTournaments(remaining);
+    setTournament(remaining.length > 0 ? remaining[0] : null);
+
+    // If host/creator, delete from Supabase so all participants see removal
+    if (isHost) {
+      try {
+        await SupabaseService.deleteTournament(tourIdToDelete, currentUser.id);
+      } catch (err) {
+        console.warn('[TournamentHub] Supabase deleteTournament error:', err);
+      }
+    }
+  };
+
+  // If loading tournaments and none active yet, render loading state
+  if (isLoadingTournaments && !tournament) {
+    return (
+      <div id="tournament-hub-loading" className="flex flex-col items-center justify-center py-24 space-y-4 text-center">
+        <Loader2 className="w-8 h-8 text-emerald-600 animate-spin" />
+        <div className="space-y-1">
+          <p className="text-sm font-black text-slate-800">Checking Tournaments...</p>
+          <p className="text-xs text-slate-500">Retrieving championship tournaments where you are creator or drafted player</p>
+        </div>
+      </div>
+    );
+  }
 
   // If no tournament configured, render Empty State UI
   if (!tournament) {
@@ -378,8 +527,58 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
   const teamAProjected = tournament.leaderboard?.teamStandings?.find(t => t.teamId === teamA.id)?.projectedPoints || teamAPoints;
   const teamBProjected = tournament.leaderboard?.teamStandings?.find(t => t.teamId === teamB.id)?.projectedPoints || teamBPoints;
 
+  const currentUserRole = getUserRoleInTournament(tournament, currentUser.id);
+
   return (
     <div id="tournament-hub-container" className="space-y-4 pb-24">
+      {/* Multiple Tournaments Switcher Bar (when user has created or was drafted to > 1 tournament) */}
+      {userTournaments.length > 1 && (
+        <div id="user-tournaments-selector-bar" className="bg-white border border-slate-200 rounded-2xl p-3 shadow-xs space-y-2">
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-bold text-slate-800 flex items-center gap-1.5">
+              <Trophy className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Your Tournaments ({userTournaments.length})</span>
+            </span>
+            <span className="text-slate-400 text-2xs">Tap card to switch view</span>
+          </div>
+          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
+            {userTournaments.map(t => {
+              const isCurrent = t.id === tournament.id;
+              const role = getUserRoleInTournament(t, currentUser.id);
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => handleSelectTournament(t)}
+                  className={`shrink-0 text-left px-3 py-2 rounded-xl border text-xs transition cursor-pointer flex flex-col gap-1 min-w-[210px] ${
+                    isCurrent 
+                      ? 'bg-emerald-50/80 border-emerald-500 shadow-xs ring-1 ring-emerald-500/20' 
+                      : 'bg-slate-50 hover:bg-slate-100 border-slate-200'
+                  }`}
+                >
+                  <div className="flex items-center justify-between w-full gap-2">
+                    <span className={`font-bold truncate max-w-[150px] ${isCurrent ? 'text-emerald-950' : 'text-slate-800'}`}>
+                      {t.name}
+                    </span>
+                    {isCurrent && (
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold border ${role.badgeColor}`}>
+                      {role.label}
+                    </span>
+                    <span className="text-[10px] text-slate-500 font-medium">
+                      {t.teams?.[0]?.shortCode || 'A'} vs {t.teams?.[1]?.shortCode || 'B'}
+                    </span>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Tournament Header Card */}
       <div className="relative rounded-3xl overflow-hidden bg-slate-950 text-white shadow-xl border border-slate-800">
         <img
@@ -391,10 +590,14 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
 
         <div className="relative p-5 sm:p-6 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 text-[10px] font-black uppercase px-2.5 py-1 rounded-full flex items-center gap-1">
                 <Trophy className="w-3 h-3 text-emerald-400" />
                 {(tournament.formatType || 'team_ryder_cup').replace(/_/g, ' ')}
+              </span>
+              <span className={`border text-[10px] font-black uppercase px-2.5 py-1 rounded-full flex items-center gap-1 ${currentUserRole.badgeColor}`}>
+                <Award className="w-3 h-3" />
+                {currentUserRole.label}
               </span>
               <span className="text-slate-300 text-xs flex items-center gap-1">
                 <Calendar className="w-3.5 h-3.5 text-slate-400" />
@@ -423,7 +626,7 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
               <button
                 onClick={handleResetTournament}
                 className="p-1.5 rounded-xl bg-white/10 hover:bg-red-500/30 text-slate-300 hover:text-red-300 transition cursor-pointer border border-white/10"
-                title="Reset Tournament to Blank State"
+                title={currentUserRole.isCreator ? "Delete Tournament" : "Remove Tournament from View"}
               >
                 <RotateCcw className="w-3.5 h-3.5" />
               </button>

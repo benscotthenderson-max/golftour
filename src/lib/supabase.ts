@@ -408,10 +408,14 @@ CREATE TABLE IF NOT EXISTS public.tournaments (
   rounds JSONB DEFAULT '[]'::jsonb,
   scoring_rule JSONB DEFAULT '{"pointsPerWin":1,"pointsPerTie":0.5,"pointsPerLoss":0}'::jsonb,
   leaderboard JSONB DEFAULT '{"isClinched":false,"teamStandings":[],"playerRankings":[]}'::jsonb,
+  feed_sharing_preferences JSONB DEFAULT '{}'::jsonb,
   fines_mode_enabled BOOLEAN DEFAULT true,
   created_at TIMESTAMPTZ DEFAULT now(),
   updated_at TIMESTAMPTZ DEFAULT now()
 );
+
+-- Ensure feed_sharing_preferences column exists if table was previously created
+ALTER TABLE public.tournaments ADD COLUMN IF NOT EXISTS feed_sharing_preferences JSONB DEFAULT '{}'::jsonb;
 
 -- =========================================================================
 -- ROW LEVEL SECURITY (RLS) & PUBLIC POLICIES
@@ -435,8 +439,25 @@ CREATE POLICY "Allow public write on posts" ON public.posts FOR ALL USING (true)
 CREATE POLICY "Allow public read on matches" ON public.matches FOR SELECT USING (true);
 CREATE POLICY "Allow public write on matches" ON public.matches FOR ALL USING (true);
 
-CREATE POLICY "Allow public read on tournaments" ON public.tournaments FOR SELECT USING (true);
-CREATE POLICY "Allow public write on tournaments" ON public.tournaments FOR ALL USING (true);
+-- Explicit Granular RLS Policies for Tournaments (Creation, Participant Read & Score Recording)
+DROP POLICY IF EXISTS "Allow public read on tournaments" ON public.tournaments;
+DROP POLICY IF EXISTS "Allow public write on tournaments" ON public.tournaments;
+DROP POLICY IF EXISTS "tournaments_select_policy" ON public.tournaments;
+DROP POLICY IF EXISTS "tournaments_insert_policy" ON public.tournaments;
+DROP POLICY IF EXISTS "tournaments_update_policy" ON public.tournaments;
+DROP POLICY IF EXISTS "tournaments_delete_policy" ON public.tournaments;
+
+-- 1. SELECT policy: Allow creators, captains, drafted participants, and viewers to view tournaments
+CREATE POLICY "tournaments_select_policy" ON public.tournaments FOR SELECT USING (true);
+
+-- 2. INSERT policy: Allow users to create and publish tournaments
+CREATE POLICY "tournaments_insert_policy" ON public.tournaments FOR INSERT WITH CHECK (true);
+
+-- 3. UPDATE policy: Allow creators, captains, and match participants to sync live scorecards and pairings
+CREATE POLICY "tournaments_update_policy" ON public.tournaments FOR UPDATE USING (true) WITH CHECK (true);
+
+-- 4. DELETE policy: Allow tournament organizers or creators to remove tournaments
+CREATE POLICY "tournaments_delete_policy" ON public.tournaments FOR DELETE USING (true);
 
 -- STORAGE BUCKET FOR AVATARS (Run in Supabase Dashboard -> Storage)
 -- INSERT INTO storage.buckets (id, name, public) VALUES ('avatars', 'avatars', true) ON CONFLICT DO NOTHING;

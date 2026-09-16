@@ -419,6 +419,23 @@ export const StorageService = {
     }
   },
 
+  deleteTournament(tournamentId: string, userId?: string): void {
+    if (!tournamentId) return;
+    if (userId) {
+      const active = this.getTournament(userId);
+      if (active?.id === tournamentId) {
+        localStorage.removeItem(`${STORAGE_KEYS.TOURNAMENT}_${userId}`);
+      }
+      const history = safeParse<Tournament[]>(`${STORAGE_KEYS.TOURNAMENTS_HISTORY}_${userId}`, []);
+      const filtered = history.filter(t => t.id !== tournamentId);
+      safeSet(`${STORAGE_KEYS.TOURNAMENTS_HISTORY}_${userId}`, filtered);
+    }
+    const globalActive = safeParse<Tournament | null>(STORAGE_KEYS.TOURNAMENT, null);
+    if (globalActive?.id === tournamentId) {
+      localStorage.removeItem(STORAGE_KEYS.TOURNAMENT);
+    }
+  },
+
   getPlayerFeedShareOptIn(tournamentId: string, userId: string): boolean {
     if (!tournamentId || !userId) return false;
     const key = `${STORAGE_KEYS.FEED_SHARE_OPT_IN}_${tournamentId}_${userId}`;
