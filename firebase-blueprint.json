@@ -1,0 +1,151 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Golfer user account with official handicap, home club, and playing stats.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Firebase Auth UID" },
+        "displayName": { "type": "string", "minLength": 2, "maxLength": 50 },
+        "username": { "type": "string", "minLength": 3, "maxLength": 30, "pattern": "^[a-zA-Z0-9_]+$" },
+        "email": { "type": "string", "format": "email" },
+        "photoURL": { "type": "string" },
+        "handicapIndex": { "type": "number", "description": "Official World Handicap System (WHS) index, e.g. 14.2" },
+        "playtomicLevel": { "type": "number", "description": "Playtomic-style skill rating from 0.5 to 7.0" },
+        "homeClubId": { "type": "string" },
+        "homeClubName": { "type": "string", "maxLength": 100 },
+        "city": { "type": "string", "maxLength": 60 },
+        "bio": { "type": "string", "maxLength": 280 },
+        "preferredTees": { "type": "string", "enum": ["Championship", "Back", "Middle", "Forward"] },
+        "isPublic": { "type": "boolean" },
+        "friendsCount": { "type": "integer" },
+        "followersCount": { "type": "integer" },
+        "followingCount": { "type": "integer" },
+        "roundsCount": { "type": "integer" },
+        "bestScore": { "type": "integer" },
+        "bag": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "displayName", "username", "email", "handicapIndex", "playtomicLevel", "createdAt", "updatedAt"]
+    },
+    "Friendship": {
+      "title": "Friendship Relationship",
+      "description": "Bidirectional friend link between two golfers.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "requesterId": { "type": "string" },
+        "recipientId": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "accepted", "declined", "blocked"] },
+        "pairKey": { "type": "string", "description": "Alphabetically sorted pair of UIDs to prevent duplicates" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "requesterId", "recipientId", "status", "pairKey", "createdAt", "updatedAt"]
+    },
+    "Match": {
+      "title": "Golf Match / Round",
+      "description": "Scheduled or completed golf round with hole-by-hole scores and differentials.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "creatorId": { "type": "string" },
+        "courseId": { "type": "string" },
+        "courseName": { "type": "string", "maxLength": 100 },
+        "courseLocation": { "type": "string" },
+        "coursePar": { "type": "integer" },
+        "courseRating": { "type": "number" },
+        "slopeRating": { "type": "integer" },
+        "gameType": { "type": "string", "enum": ["stroke_play", "stableford", "match_play", "scramble"] },
+        "holesCount": { "type": "integer", "enum": [9, 18] },
+        "status": { "type": "string", "enum": ["open", "full", "in_progress", "completed", "cancelled"] },
+        "scheduledTime": { "type": "string", "format": "date-time" },
+        "maxPlayers": { "type": "integer" },
+        "levelMin": { "type": "number" },
+        "levelMax": { "type": "number" },
+        "players": { "type": "array" },
+        "isPublic": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "creatorId", "courseName", "gameType", "holesCount", "status", "scheduledTime", "createdAt", "updatedAt"]
+    },
+    "Post": {
+      "title": "Social Activity Post",
+      "description": "Golf timeline post with match scorecard, media, or recap notes.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorUsername": { "type": "string" },
+        "authorAvatar": { "type": "string" },
+        "authorHandicap": { "type": "number" },
+        "authorLevel": { "type": "number" },
+        "type": { "type": "string", "enum": ["match_recap", "photo_story", "status_update", "achievement"] },
+        "matchId": { "type": "string" },
+        "matchData": { "type": "object" },
+        "caption": { "type": "string", "maxLength": 1000 },
+        "mediaUrls": { "type": "array" },
+        "location": { "type": "string" },
+        "likesCount": { "type": "integer" },
+        "commentsCount": { "type": "integer" },
+        "taggedUserIds": { "type": "array" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "authorId", "type", "likesCount", "commentsCount", "createdAt", "updatedAt"]
+    },
+    "Comment": {
+      "title": "Post Comment",
+      "description": "User reply on a golf post.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "postId": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorAvatar": { "type": "string" },
+        "authorHandicap": { "type": "number" },
+        "content": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "postId", "authorId", "content", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "User" },
+      "description": "Public golfer profiles and playing statistics"
+    },
+    "/users/{userId}/private/settings": {
+      "schema": "object",
+      "description": "Private golfer preferences, notification tokens, and billing"
+    },
+    "/friendships/{friendshipId}": {
+      "schema": { "$ref": "Friendship" },
+      "description": "Bidirectional friend links and pending invites"
+    },
+    "/follows/{followId}": {
+      "schema": "object",
+      "description": "Follower and following social graph documents"
+    },
+    "/matches/{matchId}": {
+      "schema": { "$ref": "Match" },
+      "description": "Golf matches, open tee time bookings, and hole-by-hole scorecards"
+    },
+    "/posts/{postId}": {
+      "schema": { "$ref": "Post" },
+      "description": "Social feed posts, match recaps, photos, and achievements"
+    },
+    "/posts/{postId}/comments/{commentId}": {
+      "schema": { "$ref": "Comment" },
+      "description": "Comments attached to a specific post"
+    },
+    "/posts/{postId}/likes/{userId}": {
+      "schema": "object",
+      "description": "Like registry for idempotent cheer/like actions"
+    }
+  }
+}

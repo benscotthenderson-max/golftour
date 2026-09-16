@@ -1,0 +1,234 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Default deny all access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // USERS COLLECTION
+    // Schema validator for user profiles
+    function isValidUser(data) {
+      return data.id is string && data.id == request.auth.uid &&
+             data.displayName is string && data.displayName.size() >= 2 && data.displayName.size() <= 50 &&
+             data.username is string && data.username.size() >= 3 && data.username.size() <= 30 &&
+             data.username.matches('^[a-zA-Z0-9_]+$') &&
+             data.email is string && data.email.size() <= 120 &&
+             data.handicapIndex is number && data.handicapIndex >= -10.0 && data.handicapIndex <= 54.0 &&
+             data.playtomicLevel is number && data.playtomicLevel >= 0.5 && data.playtomicLevel <= 7.0 &&
+             data.isPublic is bool &&
+             data.friendsCount is int && data.friendsCount >= 0 &&
+             data.followersCount is int && data.followersCount >= 0 &&
+             data.followingCount is int && data.followingCount >= 0 &&
+             data.roundsCount is int && data.roundsCount >= 0;
+    }
+
+    match /users/{userId} {
+      // Public profiles are readable by authenticated users
+      allow get: if isSignedIn() && isValidId(userId);
+      allow list: if isSignedIn();
+
+      allow create: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       isValidUser(incoming()) &&
+                       incoming().createdAt == request.time &&
+                       incoming().updatedAt == request.time;
+
+      allow update: if isOwner(userId) &&
+                       isValidId(userId) &&
+                       isValidUser(incoming()) &&
+                       incoming().id == existing().id &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt == request.time &&
+                       incoming().diff(existing()).affectedKeys().hasOnly([
+                         'displayName', 'username', 'photoURL', 'handicapIndex', 
+                         'playtomicLevel', 'homeClubId', 'homeClubName', 'city', 
+                         'bio', 'preferredTees', 'isPublic', 'bag', 'bestScore', 
+                         'roundsCount', 'friendsCount', 'followersCount', 'followingCount', 'updatedAt'
+                       ]);
+
+      allow delete: if false; // Soft deletes preferred
+
+      // Private user subcollection for sensitive PII / settings
+      match /private/{settingDoc} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // FRIENDSHIPS COLLECTION
+    function isValidFriendship(data) {
+      return data.id is string &&
+             data.requesterId is string &&
+             data.recipientId is string &&
+             data.status in ['pending', 'accepted', 'declined', 'blocked'] &&
+             data.pairKey is string;
+    }
+
+    match /friendships/{friendshipId} {
+      allow get: if isSignedIn() && (
+        resource.data.requesterId == request.auth.uid ||
+        resource.data.recipientId == request.auth.uid
+      );
+      
+      allow list: if isSignedIn() && (
+        resource.data.requesterId == request.auth.uid ||
+        resource.data.recipientId == request.auth.uid
+      );
+
+      allow create: if isSignedIn() &&
+                       isValidId(friendshipId) &&
+                       isValidFriendship(incoming()) &&
+                       incoming().requesterId == request.auth.uid &&
+                       incoming().requesterId != incoming().recipientId &&
+                       incoming().status == 'pending' &&
+                       incoming().createdAt == request.time &&
+                       incoming().updatedAt == request.time;
+
+      allow update: if isSignedIn() &&
+                       isValidId(friendshipId) &&
+                       isValidFriendship(incoming()) &&
+                       (existing().recipientId == request.auth.uid || existing().requesterId == request.auth.uid) &&
+                       incoming().requesterId == existing().requesterId &&
+                       incoming().recipientId == existing().recipientId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt == request.time &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt']);
+
+      allow delete: if isSignedIn() && (
+        resource.data.requesterId == request.auth.uid ||
+        resource.data.recipientId == request.auth.uid
+      );
+    }
+
+    // FOLLOWS COLLECTION
+    match /follows/{followId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() &&
+                       incoming().followerId == request.auth.uid &&
+                       incoming().createdAt == request.time;
+      allow delete: if isSignedIn() && resource.data.followerId == request.auth.uid;
+    }
+
+    // MATCHES COLLECTION
+    function isValidMatch(data) {
+      return data.id is string &&
+             data.creatorId is string &&
+             data.courseName is string && data.courseName.size() <= 100 &&
+             data.gameType in ['stroke_play', 'stableford', 'match_play', 'scramble'] &&
+             data.holesCount in [9, 18] &&
+             data.status in ['open', 'full', 'in_progress', 'completed', 'cancelled'] &&
+             data.players is list && data.players.size() >= 1 && data.players.size() <= 8;
+    }
+
+    match /matches/{matchId} {
+      allow get: if isSignedIn() && isValidId(matchId);
+      allow list: if isSignedIn();
+
+      allow create: if isSignedIn() &&
+                       isValidId(matchId) &&
+                       isValidMatch(incoming()) &&
+                       incoming().creatorId == request.auth.uid &&
+                       incoming().createdAt == request.time &&
+                       incoming().updatedAt == request.time;
+
+      allow update: if isSignedIn() &&
+                       isValidId(matchId) &&
+                       isValidMatch(incoming()) &&
+                       incoming().creatorId == existing().creatorId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt == request.time &&
+                       (
+                         // Match Creator updating match details or scores
+                         (existing().creatorId == request.auth.uid && 
+                          incoming().diff(existing()).affectedKeys().hasOnly(['status', 'players', 'holeByHoleScores', 'updatedAt', 'notes', 'isPublic'])) ||
+                         // Participating player joining / updating their confirmed status
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['players', 'status', 'updatedAt']))
+                       );
+
+      allow delete: if isSignedIn() && resource.data.creatorId == request.auth.uid && resource.data.status != 'completed';
+    }
+
+    // POSTS COLLECTION (Social Activity Feed)
+    function isValidPost(data) {
+      return data.id is string &&
+             data.authorId is string &&
+             data.type in ['match_recap', 'photo_story', 'status_update', 'achievement'] &&
+             data.caption is string && data.caption.size() <= 1000 &&
+             data.likesCount is int && data.likesCount >= 0 &&
+             data.commentsCount is int && data.commentsCount >= 0;
+    }
+
+    match /posts/{postId} {
+      allow get: if isSignedIn() && isValidId(postId);
+      allow list: if isSignedIn();
+
+      allow create: if isSignedIn() &&
+                       isValidId(postId) &&
+                       isValidPost(incoming()) &&
+                       incoming().authorId == request.auth.uid &&
+                       incoming().likesCount == 0 &&
+                       incoming().commentsCount == 0 &&
+                       incoming().createdAt == request.time &&
+                       incoming().updatedAt == request.time;
+
+      allow update: if isSignedIn() &&
+                       isValidId(postId) &&
+                       isValidPost(incoming()) &&
+                       incoming().authorId == existing().authorId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().updatedAt == request.time &&
+                       (
+                         // Author editing caption or media
+                         (existing().authorId == request.auth.uid && 
+                          incoming().diff(existing()).affectedKeys().hasOnly(['caption', 'mediaUrls', 'location', 'updatedAt'])) ||
+                         // Atomic counter sync from Likes / Comments
+                         (incoming().diff(existing()).affectedKeys().hasOnly(['likesCount', 'commentsCount', 'updatedAt']))
+                       );
+
+      allow delete: if isSignedIn() && resource.data.authorId == request.auth.uid;
+
+      // COMMENTS SUBCOLLECTION
+      match /comments/{commentId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() &&
+                         incoming().authorId == request.auth.uid &&
+                         incoming().postId == postId &&
+                         incoming().content is string && incoming().content.size() >= 1 && incoming().content.size() <= 500 &&
+                         incoming().createdAt == request.time;
+        allow delete: if isSignedIn() && (
+          resource.data.authorId == request.auth.uid ||
+          get(/databases/$(database)/documents/posts/$(postId)).data.authorId == request.auth.uid
+        );
+      }
+
+      // LIKES SUBCOLLECTION
+      match /likes/{userId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && request.auth.uid == userId && incoming().createdAt == request.time;
+        allow delete: if isSignedIn() && request.auth.uid == userId;
+      }
+    }
+  }
+}

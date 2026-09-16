@@ -1,0 +1,941 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "metadata": {
+    "dataset": "Garden Route Championship Golf Courses",
+    "region": "Garden Route, Western Cape, South Africa",
+    "version": "1.2.0",
+    "distancesUnit": "meters",
+    "handicapSystem": "World Handicap System (WHS) / GolfRSA",
+    "updatedAt": "2026-09-01T00:00:00.000Z"
+  },
+  "courses": [
+    {
+      "id": "course-simola-estate",
+      "name": "Simola Golf and Country Estate",
+      "clubName": "Simola Golf Club",
+      "architect": "Jack Nicklaus (Signature Design)",
+      "country": "South Africa",
+      "province": "Western Cape",
+      "region": "Garden Route",
+      "city": "Knysna",
+      "location": "Simola Estate, Knysna, Western Cape, 6571, South Africa",
+      "coordinates": {
+        "latitude": -34.0041,
+        "longitude": 23.0489
+      },
+      "coverImage": "https://images.unsplash.com/photo-1587174486073-ae5e5cff23aa?auto=format&fit=crop&w=1200&q=80",
+      "par": 72,
+      "holesCount": 18,
+      "establishedYear": 2005,
+      "grassTypes": {
+        "fairways": "Kikuyu",
+        "greens": "Bent Grass"
+      },
+      "facilities": [
+        "Jack Nicklaus Signature 18-Hole Championship Course",
+        "Modern Clubhouse with Panoramic Knysna Lagoon Views",
+        "Full Practice Range & Putting Green",
+        "Pro Shop & Fitting Studio",
+        "Golf Carts with GPS Visage Navigation",
+        "Halfway House & Country Club Bistro"
+      ],
+      "teeBoxes": [
+        {
+          "name": "Championship (Yellow)",
+          "color": "Yellow",
+          "gender": "Men",
+          "courseRating": 74.2,
+          "slopeRating": 138,
+          "totalMeters": 6550,
+          "frontNineMeters": 3280,
+          "backNineMeters": 3270
+        },
+        {
+          "name": "Standard Club (White)",
+          "color": "White",
+          "gender": "Men",
+          "courseRating": 71.8,
+          "slopeRating": 133,
+          "totalMeters": 5943,
+          "frontNineMeters": 2980,
+          "backNineMeters": 2963
+        },
+        {
+          "name": "Seniors (Blue)",
+          "color": "Blue",
+          "gender": "Men",
+          "courseRating": 69.6,
+          "slopeRating": 126,
+          "totalMeters": 5528,
+          "frontNineMeters": 2772,
+          "backNineMeters": 2756
+        },
+        {
+          "name": "Forward (Red)",
+          "color": "Red",
+          "gender": "Women",
+          "courseRating": 71.4,
+          "slopeRating": 128,
+          "totalMeters": 4874,
+          "frontNineMeters": 2450,
+          "backNineMeters": 2424
+        }
+      ],
+      "holes": [
+        {
+          "holeNumber": 1,
+          "par": 4,
+          "strokeIndex": 7,
+          "strokeIndexLadies": 7,
+          "distances": {
+            "yellowMeters": 380,
+            "whiteMeters": 342,
+            "blueMeters": 318,
+            "redMeters": 282
+          },
+          "description": "Opening downhill par 4 with a wide fairway. Avoid the fairway bunker on the right for an open approach to the two-tier green."
+        },
+        {
+          "holeNumber": 2,
+          "par": 5,
+          "strokeIndex": 9,
+          "strokeIndexLadies": 5,
+          "distances": {
+            "yellowMeters": 525,
+            "whiteMeters": 478,
+            "blueMeters": 445,
+            "redMeters": 395
+          },
+          "description": "Sweeping par 5 curving gently right. Long hitters can challenge the green in two if avoiding the left-side pot bunkers."
+        },
+        {
+          "holeNumber": 3,
+          "par": 4,
+          "strokeIndex": 3,
+          "strokeIndexLadies": 3,
+          "distances": {
+            "yellowMeters": 425,
+            "whiteMeters": 385,
+            "blueMeters": 358,
+            "redMeters": 312
+          },
+          "description": "Demanding par 4 requiring a committed drive between flanking indigenous fynbos ridges."
+        },
+        {
+          "holeNumber": 4,
+          "par": 4,
+          "strokeIndex": 13,
+          "strokeIndexLadies": 11,
+          "distances": {
+            "yellowMeters": 345,
+            "whiteMeters": 312,
+            "blueMeters": 290,
+            "redMeters": 255
+          },
+          "description": "Strategic short par 4. Favor the right side off the tee to open up a wedge approach to an elevated green."
+        },
+        {
+          "holeNumber": 5,
+          "par": 3,
+          "strokeIndex": 15,
+          "strokeIndexLadies": 17,
+          "distances": {
+            "yellowMeters": 165,
+            "whiteMeters": 148,
+            "blueMeters": 138,
+            "redMeters": 120
+          },
+          "description": "Scenic short par 3 protected by a front-left sand trap and swirling river breeze."
+        },
+        {
+          "holeNumber": 6,
+          "par": 3,
+          "strokeIndex": 1,
+          "strokeIndexLadies": 1,
+          "distances": {
+            "yellowMeters": 204,
+            "whiteMeters": 183,
+            "blueMeters": 170,
+            "redMeters": 148
+          },
+          "description": "Signature championship par 3 rated Stroke Index 1. Dramatic elevated tee shot carrying over indigenous ravine down to a heavily guarded green."
+        },
+        {
+          "holeNumber": 7,
+          "par": 5,
+          "strokeIndex": 5,
+          "strokeIndexLadies": 9,
+          "distances": {
+            "yellowMeters": 545,
+            "whiteMeters": 492,
+            "blueMeters": 458,
+            "redMeters": 405
+          },
+          "description": "Magnificent par 5 offering expansive views of the Knysna River gorge. Accurate layup leaves a receptive wedge."
+        },
+        {
+          "holeNumber": 8,
+          "par": 4,
+          "strokeIndex": 11,
+          "strokeIndexLadies": 13,
+          "distances": {
+            "yellowMeters": 368,
+            "whiteMeters": 335,
+            "blueMeters": 312,
+            "redMeters": 275
+          },
+          "description": "Uphill dogleg left. Club selection on the second shot is critical due to elevation gain."
+        },
+        {
+          "holeNumber": 9,
+          "par": 4,
+          "strokeIndex": 17,
+          "strokeIndexLadies": 15,
+          "distances": {
+            "yellowMeters": 323,
+            "whiteMeters": 305,
+            "blueMeters": 283,
+            "redMeters": 258
+          },
+          "description": "Inviting par 4 returning towards the halfway house. Birdie opportunity with a fairway hit."
+        },
+        {
+          "holeNumber": 10,
+          "par": 4,
+          "strokeIndex": 8,
+          "strokeIndexLadies": 8,
+          "distances": {
+            "yellowMeters": 372,
+            "whiteMeters": 338,
+            "blueMeters": 315,
+            "redMeters": 278
+          },
+          "description": "Back 9 opener playing along the valley rim. Stay left of the fairway bunker."
+        },
+        {
+          "holeNumber": 11,
+          "par": 3,
+          "strokeIndex": 16,
+          "strokeIndexLadies": 18,
+          "distances": {
+            "yellowMeters": 172,
+            "whiteMeters": 155,
+            "blueMeters": 144,
+            "redMeters": 126
+          },
+          "description": "Tricky par 3 over wetlands. Bailout area exists right, but hazards penalize pushed tee shots."
+        },
+        {
+          "holeNumber": 12,
+          "par": 5,
+          "strokeIndex": 10,
+          "strokeIndexLadies": 6,
+          "distances": {
+            "yellowMeters": 530,
+            "whiteMeters": 482,
+            "blueMeters": 450,
+            "redMeters": 398
+          },
+          "description": "Rolling par 5 descending through valley curves. Second shot positioning dictates birdie chances."
+        },
+        {
+          "holeNumber": 13,
+          "par": 4,
+          "strokeIndex": 4,
+          "strokeIndexLadies": 4,
+          "distances": {
+            "yellowMeters": 415,
+            "whiteMeters": 376,
+            "blueMeters": 350,
+            "redMeters": 308
+          },
+          "description": "Long, testing par 4 framed by pines and fynbos. Approach requires carry over front bunkers."
+        },
+        {
+          "holeNumber": 14,
+          "par": 3,
+          "strokeIndex": 14,
+          "strokeIndexLadies": 16,
+          "distances": {
+            "yellowMeters": 180,
+            "whiteMeters": 162,
+            "blueMeters": 151,
+            "redMeters": 134
+          },
+          "description": "Well-contoured par 3 with tiered green. Playing to the center is the smart play."
+        },
+        {
+          "holeNumber": 15,
+          "par": 5,
+          "strokeIndex": 6,
+          "strokeIndexLadies": 10,
+          "distances": {
+            "yellowMeters": 546,
+            "whiteMeters": 495,
+            "blueMeters": 460,
+            "redMeters": 405
+          },
+          "description": "Challenging uphill par 5 into the prevailing sea breeze. Requires 3 solid, disciplined strikes."
+        },
+        {
+          "holeNumber": 16,
+          "par": 4,
+          "strokeIndex": 2,
+          "strokeIndexLadies": 2,
+          "distances": {
+            "yellowMeters": 440,
+            "whiteMeters": 398,
+            "blueMeters": 370,
+            "redMeters": 328
+          },
+          "description": "The toughest par 4 on the course, rated Stroke Index 2. Demands a powerhouse drive and laser long iron."
+        },
+        {
+          "holeNumber": 17,
+          "par": 4,
+          "strokeIndex": 18,
+          "strokeIndexLadies": 14,
+          "distances": {
+            "yellowMeters": 318,
+            "whiteMeters": 292,
+            "blueMeters": 272,
+            "redMeters": 242
+          },
+          "description": "Risk-reward drivable par 4 for long hitters, but deep sand traps guard any errant strike."
+        },
+        {
+          "holeNumber": 18,
+          "par": 4,
+          "strokeIndex": 12,
+          "strokeIndexLadies": 12,
+          "distances": {
+            "yellowMeters": 292,
+            "whiteMeters": 265,
+            "blueMeters": 244,
+            "redMeters": 205
+          },
+          "description": "Memorable finishing hole playing directly towards the Simola clubhouse with lagoon panoramas."
+        }
+      ]
+    },
+    {
+      "id": "course-knysna-club",
+      "name": "Knysna Golf Club",
+      "clubName": "Knysna Golf Club",
+      "architect": "Club Historic Design & Upgrades",
+      "country": "South Africa",
+      "province": "Western Cape",
+      "region": "Garden Route",
+      "city": "Knysna",
+      "location": "Howard Street, Hunters Home, Knysna, Western Cape, 6571, South Africa",
+      "coordinates": {
+        "latitude": -34.0544,
+        "longitude": 23.0789
+      },
+      "coverImage": "https://images.unsplash.com/photo-1535131749006-b7f58c99034b?auto=format&fit=crop&w=1200&q=80",
+      "par": 72,
+      "holesCount": 18,
+      "establishedYear": 1909,
+      "grassTypes": {
+        "fairways": "Kikuyu",
+        "greens": "Bent Grass / Poa"
+      },
+      "facilities": [
+        "Historic 18-Hole Tidal Parkland Golf Course",
+        "Renowned Island Green (Hole 8)",
+        "Friendly 19th Hole Clubhouse Bar & Deck",
+        "Short Game Practice Chipping & Putting Green",
+        "Golf Cart & Trolley Hire",
+        "Halfway House Cafe"
+      ],
+      "teeBoxes": [
+        {
+          "name": "Championship (Yellow)",
+          "color": "Yellow",
+          "gender": "Men",
+          "courseRating": 72.6,
+          "slopeRating": 129,
+          "totalMeters": 6105,
+          "frontNineMeters": 3085,
+          "backNineMeters": 3020
+        },
+        {
+          "name": "Standard Club (White)",
+          "color": "White",
+          "gender": "Men",
+          "courseRating": 70.9,
+          "slopeRating": 124,
+          "totalMeters": 5752,
+          "frontNineMeters": 2910,
+          "backNineMeters": 2842
+        },
+        {
+          "name": "Seniors (Blue)",
+          "color": "Blue",
+          "gender": "Men",
+          "courseRating": 68.4,
+          "slopeRating": 118,
+          "totalMeters": 5380,
+          "frontNineMeters": 2720,
+          "backNineMeters": 2660
+        },
+        {
+          "name": "Forward (Red)",
+          "color": "Red",
+          "gender": "Women",
+          "courseRating": 71.2,
+          "slopeRating": 121,
+          "totalMeters": 4890,
+          "frontNineMeters": 2470,
+          "backNineMeters": 2420
+        }
+      ],
+      "holes": [
+        {
+          "holeNumber": 1,
+          "par": 4,
+          "strokeIndex": 11,
+          "strokeIndexLadies": 11,
+          "distances": {
+            "yellowMeters": 338,
+            "whiteMeters": 318,
+            "blueMeters": 298,
+            "redMeters": 270
+          },
+          "description": "Gentle opening par 4 running alongside the practice green. Keep drive central for clean view to the green."
+        },
+        {
+          "holeNumber": 2,
+          "par": 5,
+          "strokeIndex": 9,
+          "strokeIndexLadies": 7,
+          "distances": {
+            "yellowMeters": 495,
+            "whiteMeters": 465,
+            "blueMeters": 435,
+            "redMeters": 395
+          },
+          "description": "Tree-lined par 5 with water hazard hugging the right flank on the second shot."
+        },
+        {
+          "holeNumber": 3,
+          "par": 4,
+          "strokeIndex": 5,
+          "strokeIndexLadies": 3,
+          "distances": {
+            "yellowMeters": 370,
+            "whiteMeters": 348,
+            "blueMeters": 325,
+            "redMeters": 295
+          },
+          "description": "Slight dogleg right par 4 requiring position off the tee over the fairway bend."
+        },
+        {
+          "holeNumber": 4,
+          "par": 4,
+          "strokeIndex": 13,
+          "strokeIndexLadies": 13,
+          "distances": {
+            "yellowMeters": 325,
+            "whiteMeters": 305,
+            "blueMeters": 285,
+            "redMeters": 260
+          },
+          "description": "Narrow fairway framed by mature indigenous trees. Iron off the tee is often the smart play."
+        },
+        {
+          "holeNumber": 5,
+          "par": 3,
+          "strokeIndex": 17,
+          "strokeIndexLadies": 17,
+          "distances": {
+            "yellowMeters": 145,
+            "whiteMeters": 134,
+            "blueMeters": 125,
+            "redMeters": 115
+          },
+          "description": "Well-protected par 3 with water in front. Accurate mid-to-short iron required."
+        },
+        {
+          "holeNumber": 6,
+          "par": 4,
+          "strokeIndex": 1,
+          "strokeIndexLadies": 1,
+          "distances": {
+            "yellowMeters": 395,
+            "whiteMeters": 371,
+            "blueMeters": 348,
+            "redMeters": 315
+          },
+          "description": "Knysna's hardest rated hole (Stroke Index 1). Long par 4 requiring a precise long drive and an exacting approach over canal hazards."
+        },
+        {
+          "holeNumber": 7,
+          "par": 5,
+          "strokeIndex": 7,
+          "strokeIndexLadies": 5,
+          "distances": {
+            "yellowMeters": 505,
+            "whiteMeters": 472,
+            "blueMeters": 442,
+            "redMeters": 402
+          },
+          "description": "Strategic par 5 with multiple water inlets to navigate on the layup and approach."
+        },
+        {
+          "holeNumber": 8,
+          "par": 3,
+          "strokeIndex": 15,
+          "strokeIndexLadies": 15,
+          "distances": {
+            "yellowMeters": 152,
+            "whiteMeters": 142,
+            "blueMeters": 132,
+            "redMeters": 120
+          },
+          "feature": "Signature Island Green",
+          "description": "Signature Island Green Hole 8. A thrilling par 3 onto a bulkheaded green completely surrounded by lagoon water hazards."
+        },
+        {
+          "holeNumber": 9,
+          "par": 4,
+          "strokeIndex": 3,
+          "strokeIndexLadies": 9,
+          "distances": {
+            "yellowMeters": 360,
+            "whiteMeters": 355,
+            "blueMeters": 330,
+            "redMeters": 298
+          },
+          "description": "Strong par 4 returning to the clubhouse deck. Out-of-bounds on the left."
+        },
+        {
+          "holeNumber": 10,
+          "par": 4,
+          "strokeIndex": 12,
+          "strokeIndexLadies": 12,
+          "distances": {
+            "yellowMeters": 332,
+            "whiteMeters": 312,
+            "blueMeters": 292,
+            "redMeters": 265
+          },
+          "description": "Gentle start to the back 9. Wide fairway favors right-of-center drives."
+        },
+        {
+          "holeNumber": 11,
+          "par": 4,
+          "strokeIndex": 8,
+          "strokeIndexLadies": 8,
+          "distances": {
+            "yellowMeters": 358,
+            "whiteMeters": 335,
+            "blueMeters": 314,
+            "redMeters": 285
+          },
+          "description": "Dogleg left par 4. Cutting the corner risks tall gum trees and water hazard."
+        },
+        {
+          "holeNumber": 12,
+          "par": 5,
+          "strokeIndex": 6,
+          "strokeIndexLadies": 6,
+          "distances": {
+            "yellowMeters": 500,
+            "whiteMeters": 470,
+            "blueMeters": 440,
+            "redMeters": 400
+          },
+          "description": "True 3-shot par 5 with lagoon breeze usually into the golfer's face."
+        },
+        {
+          "holeNumber": 13,
+          "par": 3,
+          "strokeIndex": 16,
+          "strokeIndexLadies": 18,
+          "distances": {
+            "yellowMeters": 156,
+            "whiteMeters": 145,
+            "blueMeters": 135,
+            "redMeters": 122
+          },
+          "description": "Short par 3 guarded by sand traps on left and right."
+        },
+        {
+          "holeNumber": 14,
+          "par": 4,
+          "strokeIndex": 2,
+          "strokeIndexLadies": 2,
+          "distances": {
+            "yellowMeters": 405,
+            "whiteMeters": 382,
+            "blueMeters": 358,
+            "redMeters": 328
+          },
+          "description": "Toughest hole on the inward nine (Stroke Index 2). Long approach into a sloped green."
+        },
+        {
+          "holeNumber": 15,
+          "par": 4,
+          "strokeIndex": 10,
+          "strokeIndexLadies": 10,
+          "distances": {
+            "yellowMeters": 350,
+            "whiteMeters": 328,
+            "blueMeters": 308,
+            "redMeters": 278
+          },
+          "description": "Classic parkland par 4 with fairway contouring."
+        },
+        {
+          "holeNumber": 16,
+          "par": 5,
+          "strokeIndex": 4,
+          "strokeIndexLadies": 4,
+          "distances": {
+            "yellowMeters": 512,
+            "whiteMeters": 480,
+            "blueMeters": 450,
+            "redMeters": 412
+          },
+          "description": "Long par 5 with fairway narrows near the 100-meter marker."
+        },
+        {
+          "holeNumber": 17,
+          "par": 3,
+          "strokeIndex": 18,
+          "strokeIndexLadies": 16,
+          "distances": {
+            "yellowMeters": 138,
+            "whiteMeters": 130,
+            "blueMeters": 122,
+            "redMeters": 112
+          },
+          "description": "Shortest hole on the course, but a swirling wind can trick club selection."
+        },
+        {
+          "holeNumber": 18,
+          "par": 4,
+          "strokeIndex": 14,
+          "strokeIndexLadies": 14,
+          "distances": {
+            "yellowMeters": 269,
+            "whiteMeters": 260,
+            "blueMeters": 241,
+            "redMeters": 218
+          },
+          "description": "Fun, drivable closing par 4 under the watchful eyes of the 19th hole patio spectators."
+        }
+      ]
+    },
+    {
+      "id": "course-plettenberg-bay-cc",
+      "name": "Plettenberg Bay Country Club",
+      "clubName": "Plettenberg Bay Country Club",
+      "architect": "Robert Grimsdell / Peter Matkovich Upgrades",
+      "country": "South Africa",
+      "province": "Western Cape",
+      "region": "Garden Route",
+      "city": "Plettenberg Bay",
+      "location": "Piesang Valley Road, Plettenberg Bay, Western Cape, 6600, South Africa",
+      "coordinates": {
+        "latitude": -34.0625,
+        "longitude": 23.3611
+      },
+      "coverImage": "https://images.unsplash.com/photo-1592919505780-303950717480?auto=format&fit=crop&w=1200&q=80",
+      "par": 72,
+      "holesCount": 18,
+      "establishedYear": 1977,
+      "grassTypes": {
+        "fairways": "Kikuyu",
+        "greens": "Bent Grass"
+      },
+      "facilities": [
+        "18-Hole Championship Parkland Course in Robberg Valley Nature Reserve",
+        "Abundant Wildlife & Indigenous Bird Sanctuary",
+        "Chipping & Putting Greens",
+        "Full Pro Shop & Club Rental",
+        "Tennis & Bowls Pavilion",
+        "Clubhouse Lounge & Sun Terrace"
+      ],
+      "teeBoxes": [
+        {
+          "name": "Championship (Yellow)",
+          "color": "Yellow",
+          "gender": "Men",
+          "courseRating": 72.8,
+          "slopeRating": 131,
+          "totalMeters": 6180,
+          "frontNineMeters": 3140,
+          "backNineMeters": 3040
+        },
+        {
+          "name": "Standard Club (White)",
+          "color": "White",
+          "gender": "Men",
+          "courseRating": 71.2,
+          "slopeRating": 126,
+          "totalMeters": 5812,
+          "frontNineMeters": 2956,
+          "backNineMeters": 2856
+        },
+        {
+          "name": "Seniors (Blue)",
+          "color": "Blue",
+          "gender": "Men",
+          "courseRating": 69.0,
+          "slopeRating": 120,
+          "totalMeters": 5420,
+          "frontNineMeters": 2755,
+          "backNineMeters": 2665
+        },
+        {
+          "name": "Forward (Red)",
+          "color": "Red",
+          "gender": "Women",
+          "courseRating": 71.8,
+          "slopeRating": 124,
+          "totalMeters": 4950,
+          "frontNineMeters": 2515,
+          "backNineMeters": 2435
+        }
+      ],
+      "holes": [
+        {
+          "holeNumber": 1,
+          "par": 4,
+          "strokeIndex": 11,
+          "strokeIndexLadies": 11,
+          "distances": {
+            "yellowMeters": 348,
+            "whiteMeters": 325,
+            "blueMeters": 302,
+            "redMeters": 275
+          },
+          "description": "Pleasant opening par 4 playing down the valley. Receptive green allows confident birdie tries."
+        },
+        {
+          "holeNumber": 2,
+          "par": 5,
+          "strokeIndex": 7,
+          "strokeIndexLadies": 7,
+          "distances": {
+            "yellowMeters": 502,
+            "whiteMeters": 470,
+            "blueMeters": 440,
+            "redMeters": 402
+          },
+          "description": "Par 5 with fairway dogleg around Piesang River wetlands."
+        },
+        {
+          "holeNumber": 3,
+          "par": 3,
+          "strokeIndex": 15,
+          "strokeIndexLadies": 15,
+          "distances": {
+            "yellowMeters": 158,
+            "whiteMeters": 146,
+            "blueMeters": 136,
+            "redMeters": 122
+          },
+          "description": "Attractive par 3 over water lilies into a two-tiered green."
+        },
+        {
+          "holeNumber": 4,
+          "par": 4,
+          "strokeIndex": 3,
+          "strokeIndexLadies": 3,
+          "distances": {
+            "yellowMeters": 384,
+            "whiteMeters": 360,
+            "blueMeters": 335,
+            "redMeters": 305
+          },
+          "description": "Tough par 4 with indigenous trees lining both fairway borders."
+        },
+        {
+          "holeNumber": 5,
+          "par": 4,
+          "strokeIndex": 1,
+          "strokeIndexLadies": 1,
+          "distances": {
+            "yellowMeters": 392,
+            "whiteMeters": 367,
+            "blueMeters": 342,
+            "redMeters": 315
+          },
+          "description": "Plettenberg Bay CC Stroke Index 1 rated hole. Long par 4 requiring precision off the tee and a demanding second shot over river hazard."
+        },
+        {
+          "holeNumber": 6,
+          "par": 3,
+          "strokeIndex": 17,
+          "strokeIndexLadies": 17,
+          "distances": {
+            "yellowMeters": 148,
+            "whiteMeters": 138,
+            "blueMeters": 128,
+            "redMeters": 118
+          },
+          "description": "Short par 3 surrounded by nature reserve bush and greenside sand traps."
+        },
+        {
+          "holeNumber": 7,
+          "par": 5,
+          "strokeIndex": 9,
+          "strokeIndexLadies": 5,
+          "distances": {
+            "yellowMeters": 518,
+            "whiteMeters": 485,
+            "blueMeters": 452,
+            "redMeters": 412
+          },
+          "description": "Long par 5 with strategic bunkering on the layup area."
+        },
+        {
+          "holeNumber": 8,
+          "par": 4,
+          "strokeIndex": 13,
+          "strokeIndexLadies": 13,
+          "distances": {
+            "yellowMeters": 335,
+            "whiteMeters": 315,
+            "blueMeters": 295,
+            "redMeters": 268
+          },
+          "description": "Straightforward par 4 where fairway accuracy guarantees a short iron approach."
+        },
+        {
+          "holeNumber": 9,
+          "par": 4,
+          "strokeIndex": 5,
+          "strokeIndexLadies": 9,
+          "distances": {
+            "yellowMeters": 375,
+            "whiteMeters": 350,
+            "blueMeters": 325,
+            "redMeters": 298
+          },
+          "description": "Solid par 4 returning to the halfway terrace. Slight dogleg left."
+        },
+        {
+          "holeNumber": 10,
+          "par": 4,
+          "strokeIndex": 12,
+          "strokeIndexLadies": 12,
+          "distances": {
+            "yellowMeters": 330,
+            "whiteMeters": 310,
+            "blueMeters": 288,
+            "redMeters": 262
+          },
+          "description": "Back 9 start with a gentle climb into the coastal valley."
+        },
+        {
+          "holeNumber": 11,
+          "par": 3,
+          "strokeIndex": 16,
+          "strokeIndexLadies": 18,
+          "distances": {
+            "yellowMeters": 152,
+            "whiteMeters": 142,
+            "blueMeters": 132,
+            "redMeters": 120
+          },
+          "description": "Picturesque par 3 with deer often spotted along the tree line."
+        },
+        {
+          "holeNumber": 12,
+          "par": 5,
+          "strokeIndex": 8,
+          "strokeIndexLadies": 6,
+          "distances": {
+            "yellowMeters": 510,
+            "whiteMeters": 478,
+            "blueMeters": 448,
+            "redMeters": 410
+          },
+          "description": "Par 5 curving right around the forest edge. Rewarding for well-placed shots."
+        },
+        {
+          "holeNumber": 13,
+          "par": 4,
+          "strokeIndex": 2,
+          "strokeIndexLadies": 2,
+          "distances": {
+            "yellowMeters": 398,
+            "whiteMeters": 375,
+            "blueMeters": 350,
+            "redMeters": 320
+          },
+          "description": "Demanding par 4 (Stroke Index 2). Uphill approach into a heavily protected green."
+        },
+        {
+          "holeNumber": 14,
+          "par": 4,
+          "strokeIndex": 4,
+          "strokeIndexLadies": 4,
+          "distances": {
+            "yellowMeters": 385,
+            "whiteMeters": 362,
+            "blueMeters": 338,
+            "redMeters": 308
+          },
+          "description": "Long par 4 with fairway cross-bunkers."
+        },
+        {
+          "holeNumber": 15,
+          "par": 3,
+          "strokeIndex": 18,
+          "strokeIndexLadies": 16,
+          "distances": {
+            "yellowMeters": 138,
+            "whiteMeters": 128,
+            "blueMeters": 118,
+            "redMeters": 108
+          },
+          "description": "Short downhill par 3 to a shallow green."
+        },
+        {
+          "holeNumber": 16,
+          "par": 5,
+          "strokeIndex": 6,
+          "strokeIndexLadies": 8,
+          "distances": {
+            "yellowMeters": 515,
+            "whiteMeters": 486,
+            "blueMeters": 454,
+            "redMeters": 415
+          },
+          "description": "Challenging par 5 requiring two solid shots before negotiating water guarding the green."
+        },
+        {
+          "holeNumber": 17,
+          "par": 4,
+          "strokeIndex": 10,
+          "strokeIndexLadies": 10,
+          "distances": {
+            "yellowMeters": 355,
+            "whiteMeters": 335,
+            "blueMeters": 312,
+            "redMeters": 284
+          },
+          "description": "Pleasant par 4 along the valley floor."
+        },
+        {
+          "holeNumber": 18,
+          "par": 4,
+          "strokeIndex": 14,
+          "strokeIndexLadies": 14,
+          "distances": {
+            "yellowMeters": 257,
+            "whiteMeters": 240,
+            "blueMeters": 225,
+            "redMeters": 208
+          },
+          "description": "Short, exciting finishing hole finishing in front of the club terrace."
+        }
+      ]
+    }
+  ]
+}
