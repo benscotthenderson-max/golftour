@@ -22,6 +22,8 @@ import {
 import { 
   resolveMatchPlayers, 
   calculateMatchPlayerSummaries, 
+  formatPlayerInitialAndSurname,
+  formatSidePlayersLabel,
   PlayerScoreSummary 
 } from '../utils/scorecardCalculations';
 import { StorageService } from '../utils/storage';
@@ -43,6 +45,7 @@ import {
   Sliders,
   Award,
   Users,
+  User,
   UserCheck,
   Star,
   Beer,
@@ -124,10 +127,13 @@ export const TournamentMatchScorecardModal: React.FC<TournamentMatchScorecardMod
   }, [course]);
 
   // Format classification
-  const formatStr = (match.format || round.format || 'better_ball_matchplay').toLowerCase();
-  const isScramble = formatStr.includes('scramble') || formatStr.includes('alternate');
+  const roundFormat = (round?.format || '').toLowerCase();
+  const matchFormat = (match?.format || '').toLowerCase();
+  // Round/Day format takes priority, fallback to match format
+  const formatStr = roundFormat || matchFormat || 'individual_matchplay';
   const isSingles = formatStr.includes('individual') || formatStr.includes('singles');
-  const isBetterBall = !isScramble && !isSingles;
+  const isScramble = formatStr.includes('scramble') || formatStr.includes('alternate');
+  const isBetterBall = !isSingles && !isScramble;
 
   // Resolve players on Side A and Side B
   const { sideAPlayers, sideBPlayers } = useMemo(() => {
@@ -190,7 +196,7 @@ export const TournamentMatchScorecardModal: React.FC<TournamentMatchScorecardMod
     sideAPlayers.forEach(p => {
       list.push({
         userId: p.userId,
-        displayName: p.displayName,
+        displayName: formatPlayerInitialAndSurname(p.displayName),
         photoURL: p.photoURL,
         teamId: sideATeam.id,
         teamName: sideATeam.name,
@@ -201,7 +207,7 @@ export const TournamentMatchScorecardModal: React.FC<TournamentMatchScorecardMod
     sideBPlayers.forEach(p => {
       list.push({
         userId: p.userId,
-        displayName: p.displayName,
+        displayName: formatPlayerInitialAndSurname(p.displayName),
         photoURL: p.photoURL,
         teamId: sideBTeam.id,
         teamName: sideBTeam.name,
@@ -609,14 +615,22 @@ export const TournamentMatchScorecardModal: React.FC<TournamentMatchScorecardMod
                 <span className="text-[11px] text-slate-300 font-medium">
                   {formatStr.replace(/_/g, ' ').toUpperCase()}
                 </span>
+                {isSingles && (
+                  <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded flex items-center gap-1">
+                    <User className="w-3 h-3 text-emerald-400" />
+                    1v1 Singles
+                  </span>
+                )}
                 {isBetterBall && (
-                  <span className="text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1.5 py-0.2 rounded">
-                    4-Ball Best Net
+                  <span className="text-[10px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 px-2 py-0.5 rounded flex items-center gap-1">
+                    <Users className="w-3 h-3 text-amber-400" />
+                    2v2 Fourball Best Net
                   </span>
                 )}
                 {isScramble && (
-                  <span className="text-[10px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/40 px-1.5 py-0.2 rounded">
-                    Team Unified Score
+                  <span className="text-[10px] font-bold bg-sky-500/20 text-sky-300 border border-sky-500/40 px-2 py-0.5 rounded flex items-center gap-1">
+                    <Flag className="w-3 h-3 text-sky-400" />
+                    2v2 Scramble Unified Score
                   </span>
                 )}
               </div>
@@ -735,10 +749,16 @@ export const TournamentMatchScorecardModal: React.FC<TournamentMatchScorecardMod
                 </span>
               </div>
               <div className="text-xs font-black text-white truncate">
-                {sideAPlayers.map(p => p.displayName).join(' & ')}
+                {isSingles && sideAPlayers[0]
+                  ? formatPlayerInitialAndSurname(sideAPlayers[0].displayName)
+                  : sideAPlayers.map(p => formatPlayerInitialAndSurname(p.displayName)).join(' & ')}
               </div>
               <div className="text-[10px] text-slate-400 flex items-center gap-1">
-                <span>HCPs: {sideAPlayers.map(p => `${p.displayName.split(' ')[0]} (${p.playingHandicap})`).join(', ')}</span>
+                {isSingles && sideAPlayers[0] ? (
+                  <span>Playing HCP: <strong className="text-white">{sideAPlayers[0].playingHandicap}</strong></span>
+                ) : (
+                  <span>HCPs: {sideAPlayers.map(p => `${formatPlayerInitialAndSurname(p.displayName)} (${p.playingHandicap})`).join(', ')}</span>
+                )}
               </div>
             </div>
 
@@ -768,10 +788,16 @@ export const TournamentMatchScorecardModal: React.FC<TournamentMatchScorecardMod
                 </span>
               </div>
               <div className="text-xs font-black text-white truncate">
-                {sideBPlayers.map(p => p.displayName).join(' & ')}
+                {isSingles && sideBPlayers[0]
+                  ? formatPlayerInitialAndSurname(sideBPlayers[0].displayName)
+                  : sideBPlayers.map(p => formatPlayerInitialAndSurname(p.displayName)).join(' & ')}
               </div>
               <div className="text-[10px] text-slate-400 flex items-center gap-1 justify-end">
-                <span>HCPs: {sideBPlayers.map(p => `${p.displayName.split(' ')[0]} (${p.playingHandicap})`).join(', ')}</span>
+                {isSingles && sideBPlayers[0] ? (
+                  <span>Playing HCP: <strong className="text-white">{sideBPlayers[0].playingHandicap}</strong></span>
+                ) : (
+                  <span>HCPs: {sideBPlayers.map(p => `${formatPlayerInitialAndSurname(p.displayName)} (${p.playingHandicap})`).join(', ')}</span>
+                )}
               </div>
             </div>
           </div>
@@ -987,7 +1013,7 @@ export const TournamentMatchScorecardModal: React.FC<TournamentMatchScorecardMod
                             >
                               <div className="flex items-center justify-between mb-1.5">
                                 <div className="flex items-center gap-1.5">
-                                  <span className="text-xs font-bold text-white">{player.displayName}</span>
+                                  <span className="text-xs font-bold text-white">{formatPlayerInitialAndSurname(player.displayName)}</span>
                                   {isCountingForTeam && (
                                     <span 
                                       className="text-[9px] font-black text-white px-2 py-0.5 rounded-full uppercase flex items-center gap-0.5 shadow-xs"
@@ -1103,7 +1129,7 @@ export const TournamentMatchScorecardModal: React.FC<TournamentMatchScorecardMod
                             >
                               <div className="flex items-center justify-between mb-1.5">
                                 <div className="flex items-center gap-1.5">
-                                  <span className="text-xs font-bold text-white">{player.displayName}</span>
+                                  <span className="text-xs font-bold text-white">{formatPlayerInitialAndSurname(player.displayName)}</span>
                                   {isCountingForTeam && (
                                     <span 
                                       className="text-[9px] font-black text-white px-2 py-0.5 rounded-full uppercase flex items-center gap-0.5 shadow-xs"
@@ -1195,16 +1221,35 @@ export const TournamentMatchScorecardModal: React.FC<TournamentMatchScorecardMod
                       const net = gross - strokes;
 
                       return (
-                        <div key={player.userId} className="p-3.5 rounded-2xl bg-slate-950/80 border border-emerald-900/60 space-y-2">
+                        <div 
+                          key={player.userId} 
+                          className="p-3.5 rounded-2xl bg-slate-950/80 border space-y-2 transition"
+                          style={{
+                            borderColor: hexToRgba(teamColorA, 0.45),
+                            boxShadow: `0 2px 12px ${hexToRgba(teamColorA, 0.1)}`,
+                          }}
+                        >
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
-                              {sideATeam.badgeIcon} {player.displayName}
+                            <span className="text-xs font-bold flex items-center gap-1" style={{ color: teamColorA }}>
+                              {sideATeam.badgeIcon} {formatPlayerInitialAndSurname(player.displayName)}
                             </span>
-                            {strokes > 0 && (
-                              <span className="text-[10px] font-bold bg-emerald-900/80 text-emerald-300 px-1.5 py-0.2 rounded border border-emerald-700">
-                                {getStrokeDotsSymbol(strokes)} +{strokes} Dot
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                HCP {player.playingHandicap}
                               </span>
-                            )}
+                              {strokes > 0 && (
+                                <span 
+                                  className="text-[10px] font-bold px-1.5 py-0.2 rounded border"
+                                  style={{
+                                    backgroundColor: hexToRgba(teamColorA, 0.2),
+                                    color: teamColorA,
+                                    borderColor: hexToRgba(teamColorA, 0.4),
+                                  }}
+                                >
+                                  {getStrokeDotsSymbol(strokes)} +{strokes} Dot
+                                </span>
+                              )}
+                            </div>
                           </div>
 
                           <div className="flex items-center justify-between">
@@ -1218,7 +1263,7 @@ export const TournamentMatchScorecardModal: React.FC<TournamentMatchScorecardMod
                               </button>
                               <div className="text-center min-w-10">
                                 <span className="text-xl font-black text-white">{gross}</span>
-                                <span className="text-[10px] text-emerald-400 block font-bold">
+                                <span className="text-[10px] block font-bold" style={{ color: teamColorA }}>
                                   Net: {net}
                                 </span>
                               </div>
@@ -1257,16 +1302,35 @@ export const TournamentMatchScorecardModal: React.FC<TournamentMatchScorecardMod
                       const net = gross - strokes;
 
                       return (
-                        <div key={player.userId} className="p-3.5 rounded-2xl bg-slate-950/80 border border-sky-900/60 space-y-2">
+                        <div 
+                          key={player.userId} 
+                          className="p-3.5 rounded-2xl bg-slate-950/80 border space-y-2 transition"
+                          style={{
+                            borderColor: hexToRgba(teamColorB, 0.45),
+                            boxShadow: `0 2px 12px ${hexToRgba(teamColorB, 0.1)}`,
+                          }}
+                        >
                           <div className="flex items-center justify-between">
-                            <span className="text-xs font-bold text-sky-400 flex items-center gap-1">
-                              {sideBTeam.badgeIcon} {player.displayName}
+                            <span className="text-xs font-bold flex items-center gap-1" style={{ color: teamColorB }}>
+                              {sideBTeam.badgeIcon} {formatPlayerInitialAndSurname(player.displayName)}
                             </span>
-                            {strokes > 0 && (
-                              <span className="text-[10px] font-bold bg-sky-900/80 text-sky-300 px-1.5 py-0.2 rounded border border-sky-700">
-                                {getStrokeDotsSymbol(strokes)} +{strokes} Dot
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px] text-slate-400 font-mono">
+                                HCP {player.playingHandicap}
                               </span>
-                            )}
+                              {strokes > 0 && (
+                                <span 
+                                  className="text-[10px] font-bold px-1.5 py-0.2 rounded border"
+                                  style={{
+                                    backgroundColor: hexToRgba(teamColorB, 0.2),
+                                    color: teamColorB,
+                                    borderColor: hexToRgba(teamColorB, 0.4),
+                                  }}
+                                >
+                                  {getStrokeDotsSymbol(strokes)} +{strokes} Dot
+                                </span>
+                              )}
+                            </div>
                           </div>
 
                           <div className="flex items-center justify-between">
@@ -1280,7 +1344,7 @@ export const TournamentMatchScorecardModal: React.FC<TournamentMatchScorecardMod
                               </button>
                               <div className="text-center min-w-10">
                                 <span className="text-xl font-black text-white">{gross}</span>
-                                <span className="text-[10px] text-sky-400 block font-bold">
+                                <span className="text-[10px] block font-bold" style={{ color: teamColorB }}>
                                   Net: {net}
                                 </span>
                               </div>
@@ -1440,14 +1504,19 @@ export const TournamentMatchScorecardModal: React.FC<TournamentMatchScorecardMod
                     Net Comparison: <strong>{calculatedHolePreview.sideANet}</strong> vs <strong>{calculatedHolePreview.sideBNet}</strong>
                     {isBetterBall && calculatedHolePreview.sideABestPlayer && calculatedHolePreview.sideBBestPlayer && (
                       <span className="text-slate-400 text-[11px] ml-1.5">
-                        ({calculatedHolePreview.sideABestPlayer.displayName.split(' ')[0]} vs {calculatedHolePreview.sideBBestPlayer.displayName.split(' ')[0]})
+                        ({formatPlayerInitialAndSurname(calculatedHolePreview.sideABestPlayer.displayName)} vs {formatPlayerInitialAndSurname(calculatedHolePreview.sideBBestPlayer.displayName)})
+                      </span>
+                    )}
+                    {isSingles && sideAPlayers[0] && sideBPlayers[0] && (
+                      <span className="text-slate-400 text-[11px] ml-1.5">
+                        ({formatPlayerInitialAndSurname(sideAPlayers[0].displayName)} vs {formatPlayerInitialAndSurname(sideBPlayers[0].displayName)})
                       </span>
                     )}
                     <span className="ml-2 font-bold text-emerald-400">
                       {calculatedHolePreview.winner === 'sideA'
-                        ? `→ ${sideATeam.name} Wins Hole`
+                        ? `→ ${isSingles && sideAPlayers[0] ? formatPlayerInitialAndSurname(sideAPlayers[0].displayName) : sideATeam.name} Wins Hole`
                         : (calculatedHolePreview.winner === 'sideB'
-                          ? `→ ${sideBTeam.name} Wins Hole`
+                          ? `→ ${isSingles && sideBPlayers[0] ? formatPlayerInitialAndSurname(sideBPlayers[0].displayName) : sideBTeam.name} Wins Hole`
                           : '→ Halved')}
                     </span>
                   </div>
@@ -1529,7 +1598,7 @@ export const TournamentMatchScorecardModal: React.FC<TournamentMatchScorecardMod
                             <span>{teamBadge}</span> {ps.teamName}
                           </span>
                           <h4 className="text-sm font-black text-white mt-0.5">
-                            {ps.player.displayName}
+                            {formatPlayerInitialAndSurname(ps.player.displayName)}
                           </h4>
                           <span className="text-2xs text-slate-400 font-mono tabular-nums">
                             Playing Handicap: <strong>{ps.playingHandicap}</strong>
@@ -1600,13 +1669,22 @@ export const TournamentMatchScorecardModal: React.FC<TournamentMatchScorecardMod
                             {sideBTeam.shortCode} (Best Net)
                           </th>
                         </>
+                      ) : isSingles ? (
+                        <>
+                          <th className="p-2 text-white font-bold" style={{ backgroundColor: teamColorA }}>
+                            {sideAPlayers[0] ? formatPlayerInitialAndSurname(sideAPlayers[0].displayName) : sideATeam.shortCode}
+                          </th>
+                          <th className="p-2 text-white font-bold" style={{ backgroundColor: teamColorB }}>
+                            {sideBPlayers[0] ? formatPlayerInitialAndSurname(sideBPlayers[0].displayName) : sideBTeam.shortCode}
+                          </th>
+                        </>
                       ) : (
                         <>
                           <th className="p-2 text-white font-bold" style={{ backgroundColor: teamColorA }}>
-                            {sideATeam.shortCode} (Gross/Net)
+                            {sideATeam.shortCode} (Team Net)
                           </th>
                           <th className="p-2 text-white font-bold" style={{ backgroundColor: teamColorB }}>
-                            {sideBTeam.shortCode} (Gross/Net)
+                            {sideBTeam.shortCode} (Team Net)
                           </th>
                         </>
                       )}
@@ -1714,7 +1792,11 @@ export const TournamentMatchScorecardModal: React.FC<TournamentMatchScorecardMod
                                 className="px-2 py-0.5 rounded text-[10px] font-black inline-block shadow-2xs"
                                 style={winnerBadgeStyle}
                               >
-                                {res.winnerSide === 'sideA' ? sideATeam.name : (res.winnerSide === 'sideB' ? sideBTeam.name : 'Halved')}
+                                {res.winnerSide === 'sideA' 
+                                  ? (isSingles && sideAPlayers[0] ? formatPlayerInitialAndSurname(sideAPlayers[0].displayName) : sideATeam.name) 
+                                  : (res.winnerSide === 'sideB' 
+                                    ? (isSingles && sideBPlayers[0] ? formatPlayerInitialAndSurname(sideBPlayers[0].displayName) : sideBTeam.name) 
+                                    : 'Halved')}
                               </span>
                             ) : (
                               <span className="text-slate-600 text-[11px]">-</span>

@@ -35,21 +35,89 @@ export interface PlayerScoreSummary {
 }
 
 /**
+ * Formats a player's full display name into Initial and Surname format (e.g., "J. Smith").
+ * Ensures family members sharing surnames on the course are distinctly identifiable.
+ */
+export function formatPlayerInitialAndSurname(fullName?: string | null): string {
+  if (!fullName || typeof fullName !== 'string') return 'Player';
+  const clean = fullName.trim();
+  if (!clean) return 'Player';
+
+  // Already formatted like "J. Smith", "J.Smith", or "A. B. Smith"
+  if (/^[A-Za-z]\.\s+[A-Za-z]/i.test(clean)) {
+    return clean;
+  }
+  if (/^[A-Za-z]\.[A-Za-z]/i.test(clean)) {
+    return `${clean.charAt(0).toUpperCase()}. ${clean.slice(2).trim()}`;
+  }
+
+  // Handle generic numbered labels like "Team Eagle Player 1"
+  if (/^team\s+.*player\s+\d+$/i.test(clean)) {
+    const match = clean.match(/player\s+(\d+)$/i);
+    return match ? `Player ${match[1]}` : clean;
+  }
+  if (/^player\s+\d+$/i.test(clean)) {
+    return clean;
+  }
+
+  const parts = clean.split(/\s+/);
+  if (parts.length === 1) {
+    return parts[0];
+  }
+
+  const firstName = parts[0];
+  const initial = firstName.charAt(0).toUpperCase();
+  const surname = parts.slice(1).join(' ');
+  return `${initial}. ${surname}`;
+}
+
+/**
+ * Formats a side label or string of player names (e.g., "John Smith & David Miller")
+ * into initial and surname format (e.g., "J. Smith & D. Miller").
+ */
+export function formatSidePlayersLabel(label?: string | null): string {
+  if (!label || typeof label !== 'string') return '';
+  const trimmed = label.trim();
+  if (!trimmed) return '';
+
+  const separatorRegex = /(\s*(?:&|\band\b|\/)\s*)/i;
+  if (!separatorRegex.test(trimmed)) {
+    return formatPlayerInitialAndSurname(trimmed);
+  }
+
+  const parts = trimmed.split(separatorRegex);
+  return parts.map(part => {
+    if (/^(?:&|\band\b|\/)$/i.test(part.trim())) {
+      return ` ${part.trim()} `;
+    }
+    return formatPlayerInitialAndSurname(part);
+  }).join('').trim();
+}
+
+/**
  * Normalizes players on Side A and Side B, extracting or generating complete PlayerInMatch objects.
+ * Dynamically adapts to the day/round's selected format (1 player for singles, 2 players for 2v2).
  */
 export function resolveMatchPlayers(
   match: TournamentMatch,
   round: TournamentRound,
   allUsers: GolferUser[] = []
 ): { sideAPlayers: PlayerInMatch[]; sideBPlayers: PlayerInMatch[] } {
-  const isSingles = round.format === 'individual_matchplay';
+  const roundFormat = (round?.format || '').toLowerCase();
+  const matchFormat = (match?.format || '').toLowerCase();
+  // Round/Day format takes priority, fallback to match format
+  const formatStr = roundFormat || matchFormat || 'individual_matchplay';
+  const isSingles = formatStr.includes('individual') || formatStr.includes('singles');
 
   const buildPlayerFromId = (userId: string, defaultName: string, defaultHcp: number): PlayerInMatch => {
-    const user = allUsers.find(u => u.id === userId);
+    const user = allUsers.find(u => u.id === userId || u.displayName?.toLowerCase() === defaultName.toLowerCase());
+    const rawName = user?.displayName || defaultName;
+    const formattedName = formatPlayerInitialAndSurname(rawName);
+
     if (user) {
       return {
         userId: user.id,
-        displayName: user.displayName,
+        displayName: formattedName,
         username: user.username,
         photoURL: user.photoURL,
         handicapIndex: user.handicapIndex,
@@ -63,7 +131,7 @@ export function resolveMatchPlayers(
     }
     return {
       userId: userId || `player-${Math.random().toString(36).substring(2, 7)}`,
-      displayName: defaultName,
+      displayName: formattedName,
       username: defaultName.toLowerCase().replace(/\s+/g, '_'),
       photoURL: `https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150&auto=format&fit=crop&q=80`,
       handicapIndex: defaultHcp,
@@ -76,34 +144,88 @@ export function resolveMatchPlayers(
     };
   };
 
-  let sideAPlayers = match.sideA.players && match.sideA.players.length > 0 
-    ? [...match.sideA.players] 
-    : (match.sideA.playerIds || []).map((id, idx) => 
-        buildPlayerFromId(id, `${match.sideA.teamName || 'Team A'} Player ${idx + 1}`, match.sideA.playingHandicap || 10)
-      );
-
-  let sideBPlayers = match.sideB.players && match.sideB.players.length > 0 
-    ? [...match.sideB.players] 
-    : (match.sideB.playerIds || []).map((id, idx) => 
-        buildPlayerFromId(id, `${match.sideB.teamName || 'Team B'} Player ${idx + 1}`, match.sideB.playingHandicap || 10)
-      );
-
-  if (sideAPlayers.length === 0) {
-    sideAPlayers = isSingles 
-      ? [buildPlayerFromId('', match.sideA.label || 'Player A', match.sideA.playingHandicap || 10)]
-      : [
-          buildPlayerFromId('', `${match.sideA.teamName || 'Team A'} Player 1`, match.sideA.playingHandicap || 8),
-          buildPlayerFromId('', `${match.sideA.teamName || 'Team A'} Player 2`, match.sideA.playingHandicap || 12),
-        ];
+  let sideAPlayers: PlayerInMatch[] = [];
+  if (match.sideA.players && match.sideA.players.length > 0) {
+    sideAPlayers = match.sideA.players.map(p => ({
+      ...p,
+      displayName: formatPlayerInitialAndSurname(p.displayName),
+    }));
+  } else if (match.sideA.playerIds && match.sideA.playerIds.length > 0) {
+    sideAPlayers = match.sideA.playerIds.map((id, idx) => 
+      buildPlayerFromId(id, `${match.sideA.teamName || 'Team A'} Player ${idx + 1}`, match.sideA.playingHandicap || 10)
+    );
   }
 
-  if (sideBPlayers.length === 0) {
-    sideBPlayers = isSingles 
-      ? [buildPlayerFromId('', match.sideB.label || 'Player B', match.sideB.playingHandicap || 10)]
-      : [
-          buildPlayerFromId('', `${match.sideB.teamName || 'Team B'} Player 1`, match.sideB.playingHandicap || 9),
-          buildPlayerFromId('', `${match.sideB.teamName || 'Team B'} Player 2`, match.sideB.playingHandicap || 13),
-        ];
+  let sideBPlayers: PlayerInMatch[] = [];
+  if (match.sideB.players && match.sideB.players.length > 0) {
+    sideBPlayers = match.sideB.players.map(p => ({
+      ...p,
+      displayName: formatPlayerInitialAndSurname(p.displayName),
+    }));
+  } else if (match.sideB.playerIds && match.sideB.playerIds.length > 0) {
+    sideBPlayers = match.sideB.playerIds.map((id, idx) => 
+      buildPlayerFromId(id, `${match.sideB.teamName || 'Team B'} Player ${idx + 1}`, match.sideB.playingHandicap || 10)
+    );
+  }
+
+  // Deduplicate any repeated players on the same side
+  const seenA = new Set<string>();
+  sideAPlayers = sideAPlayers.filter(p => {
+    if (!p.userId || p.userId.startsWith('player-')) return true;
+    if (seenA.has(p.userId)) return false;
+    seenA.add(p.userId);
+    return true;
+  });
+
+  const seenB = new Set<string>();
+  sideBPlayers = sideBPlayers.filter(p => {
+    if (!p.userId || p.userId.startsWith('player-')) return true;
+    if (seenB.has(p.userId)) return false;
+    seenB.add(p.userId);
+    return true;
+  });
+
+  // Dynamically adapt to the selected round format:
+  if (isSingles) {
+    // 1v1 Singles: Exactly ONE player per side
+    if (sideAPlayers.length === 0) {
+      sideAPlayers = [buildPlayerFromId('', match.sideA.label || 'Player A', match.sideA.playingHandicap || 10)];
+    } else {
+      sideAPlayers = sideAPlayers.slice(0, 1);
+    }
+
+    if (sideBPlayers.length === 0) {
+      sideBPlayers = [buildPlayerFromId('', match.sideB.label || 'Player B', match.sideB.playingHandicap || 10)];
+    } else {
+      sideBPlayers = sideBPlayers.slice(0, 1);
+    }
+  } else {
+    // 2v2 / Team formats: Exactly TWO players per side (pairs)
+    if (sideAPlayers.length === 0) {
+      sideAPlayers = [
+        buildPlayerFromId('', `${match.sideA.teamName || 'Team A'} Player 1`, match.sideA.playingHandicap || 8),
+        buildPlayerFromId('', `${match.sideA.teamName || 'Team A'} Player 2`, match.sideA.playingHandicap || 12),
+      ];
+    } else if (sideAPlayers.length === 1) {
+      sideAPlayers.push(
+        buildPlayerFromId('', `${match.sideA.teamName || 'Team A'} Partner`, match.sideA.playingHandicap || 10)
+      );
+    } else if (sideAPlayers.length > 2) {
+      sideAPlayers = sideAPlayers.slice(0, 2);
+    }
+
+    if (sideBPlayers.length === 0) {
+      sideBPlayers = [
+        buildPlayerFromId('', `${match.sideB.teamName || 'Team B'} Player 1`, match.sideB.playingHandicap || 9),
+        buildPlayerFromId('', `${match.sideB.teamName || 'Team B'} Player 2`, match.sideB.playingHandicap || 13),
+      ];
+    } else if (sideBPlayers.length === 1) {
+      sideBPlayers.push(
+        buildPlayerFromId('', `${match.sideB.teamName || 'Team B'} Partner`, match.sideB.playingHandicap || 10)
+      );
+    } else if (sideBPlayers.length > 2) {
+      sideBPlayers = sideBPlayers.slice(0, 2);
+    }
   }
 
   return { sideAPlayers, sideBPlayers };
@@ -400,8 +522,10 @@ export function getPlayerRoundSnapshots(
       confirmed: true
     };
 
-    const partner = mySidePlayers.find(p => p.userId !== userId);
-    const opponents = oppSidePlayers;
+    const roundFormat = (round?.format || '').toLowerCase();
+    const isSingles = roundFormat.includes('individual') || roundFormat.includes('singles');
+    const partner = isSingles ? undefined : mySidePlayers.find(p => p.userId !== userId);
+    const opponents = isSingles ? oppSidePlayers.slice(0, 1) : oppSidePlayers;
     const playingHandicap = playerObj.playingHandicap ?? Math.round(playerObj.handicapIndex ?? 10);
 
     // 4. Determine Match Status & Outcome

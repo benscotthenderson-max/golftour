@@ -54,6 +54,7 @@ import { FinesRulesSection } from './FinesRulesSection';
 import { TournamentSocialFeed } from './TournamentSocialFeed';
 import { TournamentFeedPostModal } from './TournamentFeedPostModal';
 import { InteractiveMatchStatusBox } from './InteractiveMatchStatusBox';
+import { formatPlayerInitialAndSurname } from '../utils/scorecardCalculations';
 
 // Color helper for tinting backgrounds
 function hexToRgba(hex?: string, alpha = 1): string {
@@ -70,19 +71,17 @@ function hexToRgba(hex?: string, alpha = 1): string {
   return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
-// Helper to extract uppercase player display names (stacked broadcast style)
+// Helper to extract uppercase player display names (stacked broadcast style with Initial and Surname)
 function formatPlayerNames(side: any): string[] {
   if (side.players && side.players.length > 0) {
     return side.players.map((p: any) => {
-      const parts = (p.displayName || '').trim().split(/\s+/);
-      return (parts.length > 1 ? parts.slice(1).join(' ') : parts[0] || 'PLAYER').toUpperCase();
+      return formatPlayerInitialAndSurname(p.displayName).toUpperCase();
     });
   }
   if (side.label) {
     const rawNames = side.label.split(/\s*(?:&|\band\b|\/)\s*/i);
     return rawNames.map((n: string) => {
-      const parts = n.trim().split(/\s+/);
-      return (parts.length > 1 ? parts.slice(1).join(' ') : parts[0] || 'PLAYER').toUpperCase();
+      return formatPlayerInitialAndSurname(n).toUpperCase();
     });
   }
   return ['PLAYER'];
@@ -1375,7 +1374,7 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
                                   alt={name} 
                                   className="w-4 h-4 rounded-full object-cover" 
                                 />
-                                <span className="truncate max-w-[90px]">{name.split(' ')[0]}</span>
+                                <span className="truncate max-w-[90px]">{formatPlayerInitialAndSurname(name)}</span>
                               </button>
                             );
                           })}
