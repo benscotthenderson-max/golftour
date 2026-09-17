@@ -1147,47 +1147,164 @@ export const SupabaseService = {
   // ==========================================
   // REAL-TIME SUBSCRIPTIONS
   // ==========================================
-  subscribeToTournaments(onUpdate: (tournament: Tournament) => void): (() => void) | null {
+  subscribeToTournaments(
+    onUpdate: (tournament: Tournament) => void,
+    onDelete?: (tournamentId: string) => void
+  ): (() => void) | null {
     if (!this.isLive() || !supabase) return null;
 
     try {
+      const channelId = `realtime_tournaments_${Math.random().toString(36).substring(2, 9)}`;
       const channel = supabase
-        .channel('public:tournaments')
+        .channel(channelId)
         .on('postgres_changes', { event: '*', schema: 'public', table: 'tournaments' }, payload => {
-          if (payload.new) {
-            const tour = mapTournamentRowToTournament(payload.new);
-            onUpdate(tour);
+          if (payload.eventType === 'DELETE') {
+            if (payload.old?.id && onDelete) {
+              onDelete(payload.old.id);
+            }
+          } else if (payload.new) {
+            try {
+              const tour = mapTournamentRowToTournament(payload.new);
+              onUpdate(tour);
+            } catch (err) {
+              console.warn('[SupabaseService] Realtime tournament mapping error:', err);
+            }
           }
         })
-        .subscribe();
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            console.log('[SupabaseService] Connected to real-time tournaments channel');
+          }
+        });
 
       return () => {
-        supabase?.removeChannel(channel);
+        try {
+          supabase?.removeChannel(channel);
+        } catch {
+          // ignore
+        }
       };
     } catch (err) {
       console.warn('[SupabaseService] Real-time tournaments subscription error:', err);
       return null;
     }
   },
-  subscribeToFeed(onNewPost: (post: GolfPost) => void): (() => void) | null {
+
+  subscribeToMatches(
+    onUpdate: (match: GolfMatch) => void,
+    onDelete?: (matchId: string) => void
+  ): (() => void) | null {
     if (!this.isLive() || !supabase) return null;
 
     try {
+      const channelId = `realtime_matches_${Math.random().toString(36).substring(2, 9)}`;
       const channel = supabase
-        .channel('public:posts')
-        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'posts' }, payload => {
-          if (payload.new) {
-            const post = mapPostRowToPost(payload.new);
-            onNewPost(post);
+        .channel(channelId)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'matches' }, payload => {
+          if (payload.eventType === 'DELETE') {
+            if (payload.old?.id && onDelete) {
+              onDelete(payload.old.id);
+            }
+          } else if (payload.new) {
+            try {
+              const match = mapMatchRowToMatch(payload.new);
+              onUpdate(match);
+            } catch (err) {
+              console.warn('[SupabaseService] Realtime match mapping error:', err);
+            }
           }
+        })
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            console.log('[SupabaseService] Connected to real-time matches channel');
+          }
+        });
+
+      return () => {
+        try {
+          supabase?.removeChannel(channel);
+        } catch {
+          // ignore
+        }
+      };
+    } catch (err) {
+      console.warn('[SupabaseService] Real-time matches subscription error:', err);
+      return null;
+    }
+  },
+
+  subscribeToPosts(
+    onUpdate: (post: GolfPost) => void,
+    onDelete?: (postId: string) => void
+  ): (() => void) | null {
+    if (!this.isLive() || !supabase) return null;
+
+    try {
+      const channelId = `realtime_posts_${Math.random().toString(36).substring(2, 9)}`;
+      const channel = supabase
+        .channel(channelId)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, payload => {
+          if (payload.eventType === 'DELETE') {
+            if (payload.old?.id && onDelete) {
+              onDelete(payload.old.id);
+            }
+          } else if (payload.new) {
+            try {
+              const post = mapPostRowToPost(payload.new);
+              onUpdate(post);
+            } catch (err) {
+              console.warn('[SupabaseService] Realtime post mapping error:', err);
+            }
+          }
+        })
+        .subscribe((status) => {
+          if (status === 'SUBSCRIBED') {
+            console.log('[SupabaseService] Connected to real-time posts channel');
+          }
+        });
+
+      return () => {
+        try {
+          supabase?.removeChannel(channel);
+        } catch {
+          // ignore
+        }
+      };
+    } catch (err) {
+      console.warn('[SupabaseService] Real-time posts subscription error:', err);
+      return null;
+    }
+  },
+
+  // Alias for feed
+  subscribeToFeed(onNewPost: (post: GolfPost) => void): (() => void) | null {
+    return this.subscribeToPosts(onNewPost);
+  },
+
+  subscribeToFriendships(
+    userId: string,
+    onUpdate: () => void
+  ): (() => void) | null {
+    if (!this.isLive() || !supabase || !userId) return null;
+
+    try {
+      const channelId = `realtime_friendships_${Math.random().toString(36).substring(2, 9)}`;
+      const channel = supabase
+        .channel(channelId)
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'friendships' }, () => {
+          onUpdate();
         })
         .subscribe();
 
       return () => {
-        supabase?.removeChannel(channel);
+        try {
+          supabase?.removeChannel(channel);
+        } catch {
+          // ignore
+        }
       };
     } catch (err) {
-      console.warn('[SupabaseService] Real-time feed subscription error:', err);
+      console.warn('[SupabaseService] Real-time friendships subscription error:', err);
       return null;
     }
   }

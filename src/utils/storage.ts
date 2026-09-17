@@ -18,6 +18,7 @@ const STORAGE_KEYS = {
   FINE_CATEGORIES: 'golftour_golf_fine_categories',
   INITIALIZED: 'golftour_golf_initialized_v4',
   ACCOUNT_RESET_MIGRATION: 'golftour_accounts_reset_v4',
+  ACTIVE_TAB: 'golftour_active_tab',
 };
 
 // Safe JSON parser
@@ -563,5 +564,22 @@ export const StorageService = {
     }
     const all = this.getAllUsers().filter(u => u.id !== 'user-marcus' && u.displayName !== 'Marcus Vance');
     this.saveAllUsers(all);
+  },
+
+  // Active Tab Persistence
+  getActiveTab(): string | null {
+    try {
+      return localStorage.getItem(STORAGE_KEYS.ACTIVE_TAB);
+    } catch {
+      return null;
+    }
+  },
+
+  setActiveTab(tab: string): void {
+    try {
+      localStorage.setItem(STORAGE_KEYS.ACTIVE_TAB, tab);
+    } catch {
+      // ignore
+    }
   }
 };

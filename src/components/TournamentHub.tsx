@@ -40,7 +40,9 @@ import {
   Camera,
   Share2,
   X,
-  Loader2
+  Loader2,
+  ArrowLeft,
+  Search
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { SupabaseService, isUserInTournament } from '../services/supabaseService';
@@ -143,15 +145,13 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
   onOpenVerifyModal,
 }) => {
   const [userTournaments, setUserTournaments] = useState<Tournament[]>(() => {
-    return StorageService.getUserTournaments(currentUser.id);
+    return StorageService.getUserTournaments(currentUser.id).filter(t => isUserInTournament(t, currentUser));
   });
-  const [tournament, setTournament] = useState<Tournament | null>(() => {
-    const active = StorageService.getTournament(currentUser.id);
-    if (active) return active;
-    const history = StorageService.getUserTournaments(currentUser.id);
-    return history.length > 0 ? history[0] : null;
-  });
+  // Selected tournament for detailed view. Initialized to null so the Tourney tab opens the Hub dashboard!
+  const [tournament, setTournament] = useState<Tournament | null>(null);
   const [isLoadingTournaments, setIsLoadingTournaments] = useState<boolean>(false);
+  const [hubFilter, setHubFilter] = useState<'all' | 'live' | 'upcoming' | 'completed'>('all');
+  const [hubSearch, setHubSearch] = useState<string>('');
 
   // Helper to determine the golfer's role in a tournament
   const getUserRoleInTournament = (tour: Tournament, userId: string): { label: string; badgeColor: string; isCreator: boolean } => {
@@ -178,24 +178,21 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
   // Fetch all tournaments where user is creator OR participant/drafted player from Supabase
   useEffect(() => {
     let isMounted = true;
-    const local = StorageService.getUserTournaments(currentUser.id);
+    const local = StorageService.getUserTournaments(currentUser.id).filter(t => isUserInTournament(t, currentUser));
     setUserTournaments(local);
-    if (!tournament && local.length > 0) {
-      setTournament(local[0]);
-    }
 
     setIsLoadingTournaments(true);
     SupabaseService.fetchUserTournaments(currentUser)
       .then((remoteTournaments) => {
         if (!isMounted) return;
-        setUserTournaments(remoteTournaments);
-        if (remoteTournaments.length > 0) {
-          setTournament(prev => {
-            if (!prev) return remoteTournaments[0];
-            const updated = remoteTournaments.find(t => t.id === prev.id);
-            return updated || remoteTournaments[0];
-          });
-        }
+        const validTournaments = remoteTournaments.filter(t => isUserInTournament(t, currentUser));
+        setUserTournaments(validTournaments);
+        // Only update active tournament if the user is already viewing one:
+        setTournament(prev => {
+          if (!prev) return null;
+          const updated = validTournaments.find(t => t.id === prev.id);
+          return updated || prev;
+        });
       })
       .catch(err => {
         console.warn('[TournamentHub] Failed to fetch user tournaments from Supabase:', err);
@@ -227,8 +224,46 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
       }
     });
 
+    // Background polling fallback for seamless multi-device live scoring
+    const pollInterval = setInterval(() => {
+      if (document.visibilityState === 'visible' && isMounted) {
+        SupabaseService.fetchUserTournaments(currentUser)
+          .then((remoteTournaments) => {
+            if (!isMounted) return;
+            const validTournaments = remoteTournaments.filter(t => isUserInTournament(t, currentUser));
+            setUserTournaments(validTournaments);
+            setTournament(prev => {
+              if (!prev) return null;
+              const updated = validTournaments.find(t => t.id === prev.id);
+              return updated || prev;
+            });
+          })
+          .catch(() => {});
+      }
+    }, 10000);
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && isMounted) {
+        SupabaseService.fetchUserTournaments(currentUser)
+          .then((remoteTournaments) => {
+            if (!isMounted) return;
+            const validTournaments = remoteTournaments.filter(t => isUserInTournament(t, currentUser));
+            setUserTournaments(validTournaments);
+            setTournament(prev => {
+              if (!prev) return null;
+              const updated = validTournaments.find(t => t.id === prev.id);
+              return updated || prev;
+            });
+          })
+          .catch(() => {});
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     return () => {
       isMounted = false;
+      clearInterval(pollInterval);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
       if (unsubscribe) unsubscribe();
     };
   }, [currentUser.id]);
@@ -404,7 +439,7 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
     StorageService.deleteTournament(tourIdToDelete, currentUser.id);
     const remaining = userTournaments.filter(t => t.id !== tourIdToDelete);
     setUserTournaments(remaining);
-    setTournament(remaining.length > 0 ? remaining[0] : null);
+    setTournament(null);
 
     // If host/creator, delete from Supabase so all participants see removal
     if (isHost) {
@@ -416,93 +451,351 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
     }
   };
 
-  // If loading tournaments and none active yet, render loading state
-  if (isLoadingTournaments && !tournament) {
-    return (
-      <div id="tournament-hub-loading" className="flex flex-col items-center justify-center py-24 space-y-4 text-center">
-        <Loader2 className="w-8 h-8 text-emerald-600 animate-spin" />
-        <div className="space-y-1">
-          <p className="text-sm font-black text-slate-800">Checking Tournaments...</p>
-          <p className="text-xs text-slate-500">Retrieving championship tournaments where you are creator or drafted player</p>
-        </div>
-      </div>
-    );
-  }
-
-  // If no tournament configured, render Empty State UI
+  // When no specific tournament is selected, render the Central Tournament Hub Dashboard
   if (!tournament) {
+    const activeCount = userTournaments.filter(t => t.status === 'live').length;
+    const completedCount = userTournaments.filter(t => t.status === 'completed').length;
+    const upcomingCount = userTournaments.filter(t => t.status === 'draft' || t.status === 'registration').length;
+
+    const filteredTournaments = userTournaments.filter(t => {
+      if (hubFilter === 'live' && t.status !== 'live') return false;
+      if (hubFilter === 'completed' && t.status !== 'completed') return false;
+      if (hubFilter === 'upcoming' && t.status !== 'draft' && t.status !== 'registration') return false;
+
+      if (hubSearch.trim()) {
+        const q = hubSearch.toLowerCase().trim();
+        const matchName = (t.name || '').toLowerCase().includes(q) || 
+          (t.location || '').toLowerCase().includes(q) || 
+          (t.tagline && t.tagline.toLowerCase().includes(q)) ||
+          t.teams?.some(tm => (tm.name || '').toLowerCase().includes(q) || (tm.shortCode || '').toLowerCase().includes(q));
+        if (!matchName) return false;
+      }
+      return true;
+    });
+
     return (
-      <div id="tournament-hub-empty-container" className="space-y-4 pb-24">
-        {/* Top Banner */}
-        <div className="bg-gradient-to-r from-emerald-950 via-slate-900 to-emerald-900 border border-emerald-800 rounded-3xl p-6 text-white space-y-3 shadow-md">
-          <div className="flex items-center gap-2 text-emerald-400 text-xs font-black uppercase tracking-wider">
-            <Trophy className="w-4 h-4" /> Tournament Hub & Ryder Cup Engine
-          </div>
-          <h2 className="text-xl font-black text-white">Multi-Day Championship Matchplay</h2>
-          <p className="text-xs text-slate-300 max-w-xl leading-relaxed">
-            Configure multi-day tournaments across Garden Route championship courses (Simola, Knysna, Plettenberg Bay). Support for Fourball Better Ball, 2-Man Scramble, and Singles with live point calculations.
-          </p>
-        </div>
+      <div id="tournament-hub-dashboard" className="space-y-4 pb-24">
+        {/* Hub Hero & Action Header */}
+        <div className="relative rounded-3xl overflow-hidden bg-gradient-to-br from-emerald-950 via-slate-900 to-emerald-900 border border-emerald-800 text-white p-6 sm:p-7 shadow-lg">
+          <div className="relative z-10 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+            <div className="space-y-1.5">
+              <div className="inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-900/60 border border-emerald-700/50 px-3 py-1 rounded-full">
+                <Trophy className="w-3.5 h-3.5" />
+                <span>Ryder Cup & Matchplay Hub</span>
+              </div>
+              <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
+                Tournament Hub
+              </h2>
+              <p className="text-xs sm:text-sm text-slate-300 max-w-xl leading-relaxed">
+                Multi-day championship match play, team captains, live hole-by-hole scoring, and real-time clinch leaderboards.
+              </p>
+            </div>
 
-        {/* Clean Slate Card */}
-        <div className="bg-white border border-slate-200 rounded-3xl p-8 text-center space-y-5 shadow-xs">
-          <div className="w-16 h-16 rounded-2xl bg-emerald-50 text-emerald-600 mx-auto flex items-center justify-center border border-emerald-100 shadow-2xs">
-            <Trophy className="w-8 h-8 text-emerald-600" />
-          </div>
-
-          <div className="space-y-2 max-w-md mx-auto">
-            <h3 className="text-base font-black text-slate-900">No Tournaments Created Yet</h3>
-            <p className="text-xs text-slate-500 leading-relaxed">
-              Use the Tournament Architect Wizard to set up custom team rosters, schedule multi-format rounds across days, configure WHS handicap allowances, and track live team clinch points.
-            </p>
-          </div>
-
-          <div className="pt-2 flex items-center justify-center">
             <button
-              id="open-tournament-wizard-btn"
+              id="create-tournament-hub-btn"
               onClick={handleLaunchWizard}
-              className="w-full sm:w-auto py-3 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs transition shadow-md shadow-emerald-200 flex items-center justify-center gap-2 cursor-pointer"
+              className="py-3 px-5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs transition shadow-lg shadow-emerald-900/50 flex items-center justify-center gap-2 cursor-pointer shrink-0 self-start sm:self-center"
             >
               <Plus className="w-4 h-4" />
-              <span>Launch Tournament Architect Wizard</span>
+              <span>Create Tournament</span>
             </button>
           </div>
         </div>
 
-        {/* Tournament Feature Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
-          <div className="bg-white border border-slate-200 p-4 rounded-2xl space-y-1.5 shadow-2xs">
-            <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
-              ⛳️
-            </div>
-            <h4 className="font-bold text-slate-900">Multi-Format Rounds</h4>
-            <p className="text-slate-500 text-[11px] leading-relaxed">
-              Better Ball, 2-Man Scramble, Alternate Shot, and Singles Matchplay across multiple days and venues.
-            </p>
+        {/* Loading Indicator if fetching from Supabase and none loaded yet */}
+        {isLoadingTournaments && userTournaments.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-16 space-y-3 text-center bg-white border border-slate-200 rounded-3xl shadow-xs">
+            <Loader2 className="w-7 h-7 text-emerald-600 animate-spin" />
+            <p className="text-xs font-bold text-slate-700">Checking your tournaments...</p>
           </div>
+        )}
 
-          <div className="bg-white border border-slate-200 p-4 rounded-2xl space-y-1.5 shadow-2xs">
-            <div className="w-8 h-8 rounded-xl bg-sky-50 text-sky-700 flex items-center justify-center font-bold">
-              📊
+        {/* Empty State when user has no tournaments */}
+        {userTournaments.length === 0 && !isLoadingTournaments ? (
+          <div id="tournament-hub-empty-container" className="space-y-4">
+            <div className="bg-white border border-slate-200 rounded-3xl p-8 sm:p-10 text-center space-y-5 shadow-xs">
+              <div className="w-16 h-16 rounded-2xl bg-emerald-50 text-emerald-600 mx-auto flex items-center justify-center border border-emerald-100 shadow-2xs">
+                <Trophy className="w-8 h-8 text-emerald-600" />
+              </div>
+
+              <div className="space-y-2 max-w-md mx-auto">
+                <h3 className="text-lg font-black text-slate-900">No Tournaments Found</h3>
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  You haven't created or been drafted into any tournaments yet. Launch the Tournament Architect Wizard to set up custom team rosters, schedule multi-format rounds across days, and track live team clinch points.
+                </p>
+              </div>
+
+              <div className="pt-2 flex items-center justify-center">
+                <button
+                  id="open-tournament-wizard-btn"
+                  onClick={handleLaunchWizard}
+                  className="w-full sm:w-auto py-3 px-6 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs transition shadow-md shadow-emerald-200 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Launch Tournament Architect Wizard</span>
+                </button>
+              </div>
             </div>
-            <h4 className="font-bold text-slate-900">1-Point Scoring Rule</h4>
-            <p className="text-slate-500 text-[11px] leading-relaxed">
-              1.0 Point for win, 0.5 for tie, with automatic clinch threshold metrics updated in real-time.
-            </p>
-          </div>
 
-          <div className="bg-white border border-slate-200 p-4 rounded-2xl space-y-1.5 shadow-2xs">
-            <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center font-bold">
-              🏆
+            {/* Feature Highlights Cards */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+              <div className="bg-white border border-slate-200 p-4 rounded-2xl space-y-1.5 shadow-2xs">
+                <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold">
+                  ⛳️
+                </div>
+                <h4 className="font-bold text-slate-900">Multi-Format Rounds</h4>
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  Better Ball, 2-Man Scramble, Alternate Shot, and Singles Matchplay across championship venues.
+                </p>
+              </div>
+
+              <div className="bg-white border border-slate-200 p-4 rounded-2xl space-y-1.5 shadow-2xs">
+                <div className="w-8 h-8 rounded-xl bg-sky-50 text-sky-700 flex items-center justify-center font-bold">
+                  📊
+                </div>
+                <h4 className="font-bold text-slate-900">1-Point Scoring Rule</h4>
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  1.0 Point for win, 0.5 for tie, with automatic clinch threshold metrics updated in real-time.
+                </p>
+              </div>
+
+              <div className="bg-white border border-slate-200 p-4 rounded-2xl space-y-1.5 shadow-2xs">
+                <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-700 flex items-center justify-center font-bold">
+                  🏆
+                </div>
+                <h4 className="font-bold text-slate-900">Live Dynamic Leaderboard</h4>
+                <p className="text-slate-500 text-[11px] leading-relaxed">
+                  Track team standings, individual MVP rankings, hole-by-hole results, and match statuses.
+                </p>
+              </div>
             </div>
-            <h4 className="font-bold text-slate-900">Live Dynamic Leaderboard</h4>
-            <p className="text-slate-500 text-[11px] leading-relaxed">
-              Track team standings, individual MVP rankings, hole-by-hole results, and match statuses (Dormie, 3&2).
-            </p>
           </div>
-        </div>
+        ) : userTournaments.length > 0 && (
+          <div className="space-y-4">
+            {/* Filter Tabs & Search Bar */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+              <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-xs overflow-x-auto">
+                <button
+                  type="button"
+                  onClick={() => setHubFilter('all')}
+                  className={`py-1.5 px-3 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+                    hubFilter === 'all'
+                      ? 'bg-emerald-900 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  All ({userTournaments.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHubFilter('live')}
+                  className={`py-1.5 px-3 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+                    hubFilter === 'live'
+                      ? 'bg-emerald-900 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  Live ({activeCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHubFilter('upcoming')}
+                  className={`py-1.5 px-3 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+                    hubFilter === 'upcoming'
+                      ? 'bg-emerald-900 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Setup / Draft ({upcomingCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHubFilter('completed')}
+                  className={`py-1.5 px-3 rounded-lg text-xs font-bold transition cursor-pointer whitespace-nowrap ${
+                    hubFilter === 'completed'
+                      ? 'bg-emerald-900 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  Completed ({completedCount})
+                </button>
+              </div>
 
-        {/* Creation Wizard Modal */}
+              {userTournaments.length > 2 && (
+                <div className="relative">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={hubSearch}
+                    onChange={e => setHubSearch(e.target.value)}
+                    placeholder="Search tournaments..."
+                    className="w-full sm:w-56 bg-white border border-slate-200 rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500 shadow-2xs"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* Tournaments Grid */}
+            {filteredTournaments.length === 0 ? (
+              <div className="p-8 text-center bg-white border border-slate-200 rounded-2xl shadow-xs space-y-1">
+                <p className="text-xs font-bold text-slate-700">No tournaments match this filter</p>
+                <p className="text-xs text-slate-400">Try switching filter tabs or clearing your search query.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filteredTournaments.map(t => {
+                  const role = getUserRoleInTournament(t, currentUser.id);
+                  const teamA = t.teams?.[0];
+                  const teamB = t.teams?.[1];
+                  const teamAPoints = t.leaderboard?.teamStandings?.find(st => st.teamId === teamA?.id)?.points ?? 0;
+                  const teamBPoints = t.leaderboard?.teamStandings?.find(st => st.teamId === teamB?.id)?.points ?? 0;
+                  const clinchPts = t.clinchPoints || 8.5;
+                  const isLive = t.status === 'live';
+                  const isCompleted = t.status === 'completed';
+
+                  return (
+                    <div
+                      key={t.id}
+                      id={`tournament-card-${t.id}`}
+                      onClick={() => handleSelectTournament(t)}
+                      className="group bg-white border border-slate-200 rounded-3xl overflow-hidden hover:border-emerald-500 hover:shadow-lg transition-all duration-200 cursor-pointer flex flex-col justify-between"
+                    >
+                      {/* Card Cover Banner */}
+                      <div className="relative h-36 bg-slate-950 overflow-hidden">
+                        <img
+                          src={t.coverImage || 'https://images.unsplash.com/photo-1587174486073-ae5e5cff23aa?auto=format&fit=crop&w=1200&q=80'}
+                          alt={t.name}
+                          className="w-full h-full object-cover opacity-40 group-hover:scale-105 transition duration-500"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/60 to-transparent" />
+
+                        {/* Top Badges */}
+                        <div className="absolute top-3 left-3 right-3 flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className={`text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border backdrop-blur-xs ${role.badgeColor}`}>
+                              {role.label}
+                            </span>
+                            <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border border-white/20 bg-black/40 text-white backdrop-blur-xs">
+                              {(t.formatType || 'Ryder Cup').replace(/_/g, ' ')}
+                            </span>
+                          </div>
+
+                          <div>
+                            {isLive ? (
+                              <span className="bg-emerald-500 text-slate-950 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full flex items-center gap-1 shadow-xs">
+                                <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-pulse" />
+                                Live
+                              </span>
+                            ) : isCompleted ? (
+                              <span className="bg-slate-800 text-slate-300 border border-slate-700 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full">
+                                Completed
+                              </span>
+                            ) : (
+                              <span className="bg-amber-500/20 text-amber-300 border border-amber-500/40 text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full">
+                                Setup / Draft
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Title & Tagline at bottom of banner */}
+                        <div className="absolute bottom-3 left-3 right-3 space-y-0.5">
+                          <h3 className="text-base sm:text-lg font-black text-white group-hover:text-emerald-300 transition line-clamp-1">
+                            {t.name}
+                          </h3>
+                          {t.tagline && (
+                            <p className="text-[11px] text-slate-300 line-clamp-1 font-medium">
+                              {t.tagline}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Card Body */}
+                      <div className="p-4 space-y-3.5 flex-1 flex flex-col justify-between">
+                        {/* Scoreboard Preview (Ryder Cup Teams) */}
+                        {teamA && teamB && (
+                          <div className="bg-slate-50 border border-slate-100 rounded-2xl p-3 space-y-2">
+                            <div className="flex items-center justify-between text-xs font-bold">
+                              {/* Team A */}
+                              <div className="flex items-center gap-2">
+                                <div 
+                                  className="w-3.5 h-3.5 rounded-md flex items-center justify-center text-[9px] text-white font-black"
+                                  style={{ backgroundColor: teamA.color || '#059669' }}
+                                >
+                                  {teamA.badgeIcon || teamA.shortCode?.[0] || 'A'}
+                                </div>
+                                <span className="text-slate-800 font-bold truncate max-w-[90px] sm:max-w-[120px]">
+                                  {teamA.name}
+                                </span>
+                              </div>
+
+                              {/* Points Display */}
+                              <div className="flex items-center gap-2 bg-white px-2.5 py-1 rounded-xl border border-slate-200 shadow-2xs">
+                                <span className="text-sm font-black" style={{ color: teamA.color || '#059669' }}>
+                                  {teamAPoints.toFixed(1)}
+                                </span>
+                                <span className="text-2xs text-slate-400 font-black">—</span>
+                                <span className="text-sm font-black" style={{ color: teamB.color || '#0284c7' }}>
+                                  {teamBPoints.toFixed(1)}
+                                </span>
+                              </div>
+
+                              {/* Team B */}
+                              <div className="flex items-center gap-2">
+                                <span className="text-slate-800 font-bold truncate max-w-[90px] sm:max-w-[120px] text-right">
+                                  {teamB.name}
+                                </span>
+                                <div 
+                                  className="w-3.5 h-3.5 rounded-md flex items-center justify-center text-[9px] text-white font-black"
+                                  style={{ backgroundColor: teamB.color || '#0284c7' }}
+                                >
+                                  {teamB.badgeIcon || teamB.shortCode?.[0] || 'B'}
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Clinch Metric */}
+                            <div className="flex items-center justify-between text-[10px] text-slate-500 pt-0.5">
+                              <span>Target: <strong className="text-slate-700">{clinchPts} pts</strong> to clinch</span>
+                              <span>{t.rounds?.length || 0} Rounds Scheduled</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Metadata Details */}
+                        <div className="grid grid-cols-2 gap-2 text-xs text-slate-600">
+                          <div className="flex items-center gap-1.5 text-[11px] truncate">
+                            <MapPin className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <span className="truncate">{t.location || 'Garden Route'}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 text-[11px] justify-end truncate">
+                            <Users className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <span>{t.playersCount || (teamA?.playerIds?.length || 0) + (teamB?.playerIds?.length || 0) || 0} Players</span>
+                          </div>
+                        </div>
+
+                        {/* Card Action Footer */}
+                        <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
+                          <span className="text-[11px] text-slate-400 font-medium">
+                            {t.startDate ? new Date(t.startDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) : 'Upcoming'}
+                          </span>
+                          <div className="flex items-center gap-1 text-emerald-700 font-black group-hover:translate-x-0.5 transition">
+                            <span>Open Tournament</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tournament Creation Wizard Modal */}
         {isWizardOpen && (
           <TournamentCreationWizard
             currentUser={currentUser}
@@ -531,6 +824,33 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
 
   return (
     <div id="tournament-hub-container" className="space-y-4 pb-24">
+      {/* Back to Tournaments Hub Navigation Header */}
+      <div className="flex items-center justify-between gap-3 bg-white border border-slate-200 rounded-2xl p-2.5 px-4 shadow-xs">
+        <button
+          id="back-to-tournament-hub-btn"
+          type="button"
+          onClick={() => setTournament(null)}
+          className="inline-flex items-center gap-2.5 text-xs font-bold text-slate-700 hover:text-emerald-700 transition cursor-pointer group"
+        >
+          <div className="w-7 h-7 rounded-lg bg-slate-100 group-hover:bg-emerald-50 text-slate-600 group-hover:text-emerald-700 flex items-center justify-center transition border border-slate-200 group-hover:border-emerald-200">
+            <ArrowLeft className="w-4 h-4" />
+          </div>
+          <div className="flex flex-col text-left">
+            <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">Tournament Hub</span>
+            <span className="text-xs font-black text-slate-900 group-hover:text-emerald-700">← All Tournaments ({userTournaments.length})</span>
+          </div>
+        </button>
+
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleLaunchWizard}
+            className="py-1.5 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">New Tournament</span>
+          </button>
+        </div>
+      </div>
       {/* Multiple Tournaments Switcher Bar (when user has created or was drafted to > 1 tournament) */}
       {userTournaments.length > 1 && (
         <div id="user-tournaments-selector-bar" className="bg-white border border-slate-200 rounded-2xl p-3 shadow-xs space-y-2">

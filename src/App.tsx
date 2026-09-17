@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { GolferUser, GolfPost, GolfMatch, FriendRequest } from './types/golf';
 import { MOCK_COURSES } from './data/mockData';
 import { StorageService } from './utils/storage';
@@ -6,7 +6,7 @@ import { AuthService } from './services/authService';
 import { SupabaseService } from './services/supabaseService';
 import { dedupeUsers, isSameUser } from './utils/userDedupe';
 import { supabase } from './lib/supabase';
-import { HeaderNav, ViewMode } from './components/HeaderNav';
+import { HeaderNav } from './components/HeaderNav';
 import { MobileSimulator, TabType } from './components/MobileSimulator';
 import { GolfTourFeed } from './components/GolfTourFeed';
 import { PlayerDiscovery } from './components/PlayerDiscovery';
@@ -14,7 +14,6 @@ import { MatchesHub } from './components/MatchesHub';
 import { GolferProfile } from './components/GolferProfile';
 import { MatchScorecardModal } from './components/MatchScorecardModal';
 import { NewPostModal } from './components/NewPostModal';
-import { ArchitectureExplorer } from './components/ArchitectureExplorer';
 import { GolfMatchProvider, useGolfMatch } from './context/GolfMatchContext';
 import { ActiveMatchScoring } from './components/ActiveMatchScoring';
 import { TournamentHub } from './components/TournamentHub';
@@ -25,6 +24,33 @@ import { EmailVerificationModal } from './components/EmailVerificationModal';
 import { FriendProfileModal } from './components/FriendProfileModal';
 import { ThemeProvider, useTheme } from './context/ThemeContext';
 import confetti from 'canvas-confetti';
+
+const VALID_TABS: TabType[] = ['feed', 'tournaments', 'matches', 'scoring', 'players', 'profile'];
+
+const getInitialActiveTab = (): TabType => {
+  try {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get('tab') as TabType;
+      if (tabParam && VALID_TABS.includes(tabParam)) {
+        return tabParam;
+      }
+
+      const hash = window.location.hash.replace('#', '') as TabType;
+      if (hash && VALID_TABS.includes(hash)) {
+        return hash;
+      }
+
+      const saved = StorageService.getActiveTab() as TabType;
+      if (saved && VALID_TABS.includes(saved)) {
+        return saved;
+      }
+    }
+  } catch (err) {
+    console.warn('[App] Error reading initial active tab:', err);
+  }
+  return 'feed';
+};
 
 interface AppContentProps {
   currentUser: GolferUser | null;
@@ -58,7 +84,7 @@ function AppContent({
     }
   }, [currentUser?.id]);
 
-  // Synchronize state with Supabase cloud database
+  // Synchronize state with Supabase cloud database with Realtime subscriptions and automatic polling
   useEffect(() => {
     let isCancelled = false;
 
@@ -74,7 +100,7 @@ function AppContent({
           });
         }
 
-        // 2. Sync global posts
+        // 2. Sync global posts & scorecards
         const remotePosts = await SupabaseService.fetchPosts();
         if (!isCancelled && remotePosts.length > 0) {
           setPosts(prev => {
@@ -137,16 +163,117 @@ function AppContent({
       }
     };
 
+    // Initial sync
     syncWithSupabase();
+
+    // Supabase Real-Time Subscriptions for instant cross-device updates
+    const unsubMatches = SupabaseService.subscribeToMatches(
+      (updatedMatch) => {
+        if (isCancelled) return;
+        setMatches(prev => {
+          const exists = prev.some(m => m.id === updatedMatch.id);
+          const next = exists
+            ? prev.map(m => m.id === updatedMatch.id ? updatedMatch : m)
+            : [updatedMatch, ...prev];
+          StorageService.saveMatches(next);
+          return next;
+        });
+      },
+      (deletedMatchId) => {
+        if (isCancelled) return;
+        setMatches(prev => {
+          const next = prev.filter(m => m.id !== deletedMatchId);
+          StorageService.saveMatches(next);
+          return next;
+        });
+      }
+    );
+
+    const unsubPosts = SupabaseService.subscribeToPosts(
+      (updatedPost) => {
+        if (isCancelled) return;
+        setPosts(prev => {
+          const exists = prev.some(p => p.id === updatedPost.id);
+          const next = exists
+            ? prev.map(p => p.id === updatedPost.id ? updatedPost : p)
+            : [updatedPost, ...prev];
+          StorageService.savePosts(next);
+          return next;
+        });
+      },
+      (deletedPostId) => {
+        if (isCancelled) return;
+        setPosts(prev => {
+          const next = prev.filter(p => p.id !== deletedPostId);
+          StorageService.savePosts(next);
+          return next;
+        });
+      }
+    );
+
+    const unsubFriendships = currentUser?.id 
+      ? SupabaseService.subscribeToFriendships(currentUser.id, () => {
+          if (!isCancelled) syncWithSupabase();
+        })
+      : null;
+
+    // Automatic polling fallback every 12 seconds
+    const pollInterval = setInterval(() => {
+      if (document.visibilityState === 'visible' && !isCancelled) {
+        syncWithSupabase();
+      }
+    }, 12000);
+
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible' && !isCancelled) {
+        syncWithSupabase();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
 
     return () => {
       isCancelled = true;
+      clearInterval(pollInterval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      if (unsubMatches) unsubMatches();
+      if (unsubPosts) unsubPosts();
+      if (unsubFriendships) unsubFriendships();
     };
   }, [currentUser?.id]);
 
-  // UI View States
-  const [viewMode, setViewMode] = useState<ViewMode>('app');
-  const [mobileTab, setMobileTab] = useState<TabType>('feed');
+  // UI View States with URL & LocalStorage persistence
+  const [mobileTab, setMobileTabState] = useState<TabType>(getInitialActiveTab);
+
+  const setMobileTab = useCallback((newTab: TabType) => {
+    setMobileTabState(newTab);
+    StorageService.setActiveTab(newTab);
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', newTab);
+      window.history.replaceState({ tab: newTab }, '', url.toString());
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Listen to popstate for browser back / forward navigation
+  useEffect(() => {
+    const handlePopState = () => {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const tabParam = params.get('tab') as TabType;
+        if (tabParam && VALID_TABS.includes(tabParam)) {
+          setMobileTabState(tabParam);
+          StorageService.setActiveTab(tabParam);
+        }
+      } catch {
+        // ignore
+      }
+    };
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
+
   const [selectedScorecardPost, setSelectedScorecardPost] = useState<GolfPost | null>(null);
   const [isNewPostModalOpen, setIsNewPostModalOpen] = useState<boolean>(false);
   const [isAddGolferModalOpen, setIsAddGolferModalOpen] = useState<boolean>(false);
@@ -656,32 +783,20 @@ function AppContent({
     }`}>
       {/* Top Application Header */}
       <HeaderNav
-        viewMode={viewMode}
-        onChangeViewMode={setViewMode}
         currentUser={currentUser}
         onOpenNewPost={() => setIsNewPostModalOpen(true)}
       />
 
       {/* Main Content Area: Responsive Full-Viewport Layout */}
       <main className="flex-1 w-full flex flex-col min-h-0">
-        {viewMode === 'architecture_only' ? (
-          <div className="max-w-7xl w-full mx-auto p-4 lg:p-6 flex-1 overflow-y-auto">
-            <ArchitectureExplorer
-              currentUser={currentUser}
-              posts={posts}
-              matches={matches}
-              friendRequests={friendRequests}
-            />
-          </div>
-        ) : (
-          <MobileSimulator
-            currentTab={mobileTab}
-            onChangeTab={setMobileTab}
-            currentUser={currentUser}
-            pendingRequestsCount={pendingRequestsCount}
-            hasActiveMatch={Boolean(activeMatch)}
-            onOpenNotifications={() => setMobileTab('players')}
-          >
+        <MobileSimulator
+          currentTab={mobileTab}
+          onChangeTab={setMobileTab}
+          currentUser={currentUser}
+          pendingRequestsCount={pendingRequestsCount}
+          hasActiveMatch={Boolean(activeMatch)}
+          onOpenNotifications={() => setMobileTab('players')}
+        >
             {/* Prominent Verification Banner if user email is unverified */}
             {!currentUser.emailVerified && (
               <EmailVerificationBanner
@@ -762,7 +877,6 @@ function AppContent({
               />
             )}
           </MobileSimulator>
-        )}
       </main>
 
       {/* Interactive 18-Hole Match Scorecard Modal */}
