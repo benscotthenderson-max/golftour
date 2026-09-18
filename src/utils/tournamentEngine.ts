@@ -15,6 +15,29 @@ import { MOCK_COURSES } from '../data/mockData';
 
 
 /**
+ * Checks if every match across every round in a tournament has every hole entered and finalized.
+ * When true, the tournament automatically transitions from 'live' to 'completed'.
+ */
+export function isTournamentAllMatchesCompleted(tournament: Tournament): boolean {
+  if (!tournament.rounds || tournament.rounds.length === 0) return false;
+  let totalMatches = 0;
+  for (const round of tournament.rounds) {
+    if (!round.matches || round.matches.length === 0) return false;
+    totalMatches += round.matches.length;
+    for (const match of round.matches) {
+      const holesTotal = match.holesTotal || 18;
+      const holeResultsCount = match.holeResults ? Object.keys(match.holeResults).length : 0;
+      const isAllHolesEntered = holeResultsCount >= holesTotal || match.holesCompleted >= holesTotal;
+      const isMatchFinalized = match.status === 'completed' || match.isDecided || isAllHolesEntered;
+      if (!isMatchFinalized) {
+        return false;
+      }
+    }
+  }
+  return totalMatches > 0;
+}
+
+/**
  * Calculates current match state (Lead, Margin, Dormie, Final outcome, Points)
  * Based on standard Match Play Rules:
  * - 1 Point for Win

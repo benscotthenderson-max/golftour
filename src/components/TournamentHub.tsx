@@ -8,7 +8,8 @@ import {
   PlayerMvpRankingEntry
 } from '../types/golf';
 import { 
-  recalculateTournamentLeaderboard
+  recalculateTournamentLeaderboard,
+  isTournamentAllMatchesCompleted
 } from '../utils/tournamentEngine';
 import { StorageService } from '../utils/storage';
 import { TournamentFeedService } from '../services/tournamentFeedService';
@@ -174,17 +175,48 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
     return { label: 'Participant', badgeColor: 'bg-slate-500/20 text-slate-300 border-slate-500/40', isCreator: false };
   };
 
+  // Helper to determine effective tournament status.
+  // When every hole has been entered and finalized for every match in a tournament,
+  // it automatically transitions to 'completed'.
+  const getEffectiveTournamentStatus = (t: Tournament): 'draft' | 'registration' | 'live' | 'completed' => {
+    if (t.status === 'completed' || isTournamentAllMatchesCompleted(t)) {
+      return 'completed';
+    }
+    return t.status;
+  };
+
+  // Normalizes tournaments, ensuring any tournament whose matches are all finalized transitions to 'completed'
+  const normalizeTournaments = (tournaments: Tournament[]): Tournament[] => {
+    return tournaments.map(t => {
+      if (t.status !== 'completed' && isTournamentAllMatchesCompleted(t)) {
+        const completedTour: Tournament = {
+          ...t,
+          status: 'completed',
+          rounds: t.rounds?.map(r => ({
+            ...r,
+            status: 'completed',
+            matches: r.matches?.map(m => ({ ...m, status: 'completed' as const })) || [],
+          })) || [],
+        };
+        StorageService.saveTournament(completedTour, currentUser.id);
+        SupabaseService.upsertTournament(completedTour, currentUser.id).catch(() => {});
+        return completedTour;
+      }
+      return t;
+    });
+  };
+
   // Fetch all tournaments where user is creator OR participant/drafted player from Supabase
   useEffect(() => {
     let isMounted = true;
-    const local = StorageService.getUserTournaments(currentUser.id).filter(t => isUserInTournament(t, currentUser));
+    const local = normalizeTournaments(StorageService.getUserTournaments(currentUser.id).filter(t => isUserInTournament(t, currentUser)));
     setUserTournaments(local);
 
     setIsLoadingTournaments(true);
     SupabaseService.fetchUserTournaments(currentUser)
       .then((remoteTournaments) => {
         if (!isMounted) return;
-        const validTournaments = remoteTournaments.filter(t => isUserInTournament(t, currentUser));
+        const validTournaments = normalizeTournaments(remoteTournaments.filter(t => isUserInTournament(t, currentUser)));
         setUserTournaments(validTournaments);
         // Only update active tournament if the user is already viewing one:
         setTournament(prev => {
@@ -201,9 +233,21 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
       });
 
     // Real-time listener for tournament changes (live scoring, drafts, pairings)
-    const unsubscribe = SupabaseService.subscribeToTournaments((updatedTour) => {
+    const unsubscribe = SupabaseService.subscribeToTournaments((incomingTour) => {
       if (!isMounted) return;
-      if (isUserInTournament(updatedTour, currentUser)) {
+      if (isUserInTournament(incomingTour, currentUser)) {
+        const updatedTour = (incomingTour.status !== 'completed' && isTournamentAllMatchesCompleted(incomingTour))
+          ? {
+              ...incomingTour,
+              status: 'completed' as const,
+              rounds: incomingTour.rounds?.map(r => ({
+                ...r,
+                status: 'completed' as const,
+                matches: r.matches?.map(m => ({ ...m, status: 'completed' as const })) || [],
+              })) || [],
+            }
+          : incomingTour;
+
         setUserTournaments(prev => {
           const exists = prev.some(t => t.id === updatedTour.id);
           if (exists) {
@@ -229,7 +273,7 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
         SupabaseService.fetchUserTournaments(currentUser)
           .then((remoteTournaments) => {
             if (!isMounted) return;
-            const validTournaments = remoteTournaments.filter(t => isUserInTournament(t, currentUser));
+            const validTournaments = normalizeTournaments(remoteTournaments.filter(t => isUserInTournament(t, currentUser)));
             setUserTournaments(validTournaments);
             setTournament(prev => {
               if (!prev) return null;
@@ -246,7 +290,7 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
         SupabaseService.fetchUserTournaments(currentUser)
           .then((remoteTournaments) => {
             if (!isMounted) return;
-            const validTournaments = remoteTournaments.filter(t => isUserInTournament(t, currentUser));
+            const validTournaments = normalizeTournaments(remoteTournaments.filter(t => isUserInTournament(t, currentUser)));
             setUserTournaments(validTournaments);
             setTournament(prev => {
               if (!prev) return null;
@@ -358,17 +402,35 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
       if (!prevTour) return prevTour;
       const updatedRounds = prevTour.rounds.map(r => {
         if (r.id !== updatedMatch.roundId) return r;
+        const newMatches = r.matches.map(m => m.id === updatedMatch.id ? updatedMatch : m);
+        const isRoundDone = newMatches.length > 0 && newMatches.every(m => {
+          const holesTotal = m.holesTotal || 18;
+          const holeResultsCount = m.holeResults ? Object.keys(m.holeResults).length : 0;
+          return m.status === 'completed' || m.isDecided || holeResultsCount >= holesTotal || m.holesCompleted >= holesTotal;
+        });
         return {
           ...r,
-          matches: r.matches.map(m => m.id === updatedMatch.id ? updatedMatch : m),
+          matches: newMatches,
+          status: isRoundDone ? ('completed' as const) : r.status,
         };
       });
 
-      const updatedTour: Tournament = {
+      let updatedTour: Tournament = {
         ...prevTour,
         rounds: updatedRounds,
         updatedAt: new Date().toISOString(),
       };
+
+      // Automatic Completion Status: When every hole has been entered and finalized for every match in a tournament,
+      // automatically transition the tournament to 'completed'
+      if (isTournamentAllMatchesCompleted(updatedTour)) {
+        updatedTour.status = 'completed';
+        updatedTour.rounds = updatedTour.rounds.map(r => ({
+          ...r,
+          status: 'completed' as const,
+          matches: r.matches.map(m => ({ ...m, status: 'completed' as const })),
+        }));
+      }
 
       updatedTour.leaderboard = recalculateTournamentLeaderboard(updatedTour, allUsers);
       StorageService.saveTournament(updatedTour, currentUser.id);
@@ -452,14 +514,18 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
 
   // When no specific tournament is selected, render the Central Tournament Hub Dashboard
   if (!tournament) {
-    const activeCount = userTournaments.filter(t => t.status === 'live').length;
-    const completedCount = userTournaments.filter(t => t.status === 'completed').length;
-    const upcomingCount = userTournaments.filter(t => t.status === 'draft' || t.status === 'registration').length;
+    const activeCount = userTournaments.filter(t => getEffectiveTournamentStatus(t) === 'live').length;
+    const completedCount = userTournaments.filter(t => getEffectiveTournamentStatus(t) === 'completed').length;
+    const upcomingCount = userTournaments.filter(t => {
+      const st = getEffectiveTournamentStatus(t);
+      return st === 'draft' || st === 'registration';
+    }).length;
 
     const filteredTournaments = userTournaments.filter(t => {
-      if (hubFilter === 'live' && t.status !== 'live') return false;
-      if (hubFilter === 'completed' && t.status !== 'completed') return false;
-      if (hubFilter === 'upcoming' && t.status !== 'draft' && t.status !== 'registration') return false;
+      const effStatus = getEffectiveTournamentStatus(t);
+      if (hubFilter === 'live' && effStatus !== 'live') return false;
+      if (hubFilter === 'completed' && effStatus !== 'completed') return false;
+      if (hubFilter === 'upcoming' && effStatus !== 'draft' && effStatus !== 'registration') return false;
 
       if (hubSearch.trim()) {
         const q = hubSearch.toLowerCase().trim();
@@ -480,7 +546,7 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
             <div className="space-y-1.5">
               <div className="inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-900/60 border border-emerald-700/50 px-3 py-1 rounded-full">
                 <Trophy className="w-3.5 h-3.5" />
-                <span>Ryder Cup & Matchplay Hub</span>
+                <span>Championship & Matchplay Hub</span>
               </div>
               <h2 className="text-2xl sm:text-3xl font-black text-white tracking-tight">
                 Tournament Hub
@@ -650,8 +716,9 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
                   const teamAPoints = t.leaderboard?.teamStandings?.find(st => st.teamId === teamA?.id)?.points ?? 0;
                   const teamBPoints = t.leaderboard?.teamStandings?.find(st => st.teamId === teamB?.id)?.points ?? 0;
                   const clinchPts = t.clinchPoints || 8.5;
-                  const isLive = t.status === 'live';
-                  const isCompleted = t.status === 'completed';
+                  const effStatus = getEffectiveTournamentStatus(t);
+                  const isLive = effStatus === 'live';
+                  const isCompleted = effStatus === 'completed';
 
                   return (
                     <div
@@ -676,7 +743,7 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
                               {role.label}
                             </span>
                             <span className="text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full border border-white/20 bg-black/40 text-white backdrop-blur-xs">
-                              {(t.formatType || 'Ryder Cup').replace(/_/g, ' ')}
+                              {(t.name || t.formatType?.replace(/_/g, ' ') || 'Matchplay')}
                             </span>
                           </div>
 
@@ -1083,15 +1150,18 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
               </div>
 
               {/* Center Header: Trophy Crest & Tournament Title */}
-              <div className="bg-[#0B1E36] px-2.5 sm:px-5 py-2 sm:py-3 flex flex-col items-center justify-center text-center border-x border-slate-700/80 min-w-[80px] sm:min-w-[120px]">
+              <div className="bg-[#0B1E36] px-2.5 sm:px-5 py-2 sm:py-3 flex flex-col items-center justify-center text-center border-x border-slate-700/80 min-w-[90px] sm:min-w-[140px] max-w-[150px] sm:max-w-[220px]">
                 <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-amber-400/10 border border-amber-400/30 flex items-center justify-center text-amber-400 shadow-[0_0_12px_rgba(245,158,11,0.2)] mb-0.5">
                   <Trophy className="w-4 h-4 sm:w-4.5 sm:h-4.5" />
                 </div>
-                <span className="text-[9px] sm:text-[11px] font-black uppercase tracking-wider text-white leading-tight">
-                  RYDER CUP
+                <span 
+                  className="text-[9px] sm:text-[11px] font-black uppercase tracking-wider text-white leading-tight truncate w-full"
+                  title={tournament.name}
+                >
+                  {(tournament.name || 'TOURNAMENT').toUpperCase()}
                 </span>
-                <span className="text-[7px] sm:text-[8px] text-amber-300 font-bold uppercase tracking-widest leading-tight">
-                  MATCHPLAY
+                <span className="text-[7px] sm:text-[8px] text-amber-300 font-bold uppercase tracking-widest leading-tight truncate w-full">
+                  {(tournament.formatType ? tournament.formatType.replace(/_/g, ' ') : 'MATCHPLAY').toUpperCase()}
                 </span>
               </div>
 

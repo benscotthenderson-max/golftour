@@ -608,7 +608,11 @@ export const TournamentMatchScorecardModal: React.FC<TournamentMatchScorecardMod
         <div className="bg-gradient-to-r from-[#131923] via-[#1A2330] to-[#131923] text-white p-4 sm:p-5 border-b border-white/[0.08]">
           <div className="flex items-start justify-between gap-3">
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2 mb-1.5">
+                <span className="text-[10px] font-black uppercase tracking-wider text-amber-300 bg-amber-950/80 px-2.5 py-0.5 rounded-lg border border-amber-500/40 flex items-center gap-1 shadow-2xs">
+                  <Trophy className="w-3 h-3 text-amber-400" />
+                  <span>{tournament.name}</span>
+                </span>
                 <span className="text-[10px] font-black uppercase tracking-wider text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded border border-emerald-500/30">
                   Day {round.dayNumber} • Flight #{match.matchNumber}
                 </span>

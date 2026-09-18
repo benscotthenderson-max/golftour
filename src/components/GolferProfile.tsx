@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { GolferUser, GolfBagItem, TeeColor, Tournament } from '../types/golf';
+import { GolferUser, GolfBagItem, TeeColor } from '../types/golf';
 import { MOCK_COURSES } from '../data/mockData';
 import { useTheme } from '../context/ThemeContext';
 import { StorageService } from '../utils/storage';
@@ -79,11 +79,6 @@ export const GolferProfile: React.FC<GolferProfileProps> = ({
   const [photoError, setPhotoError] = useState<string | null>(null);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
 
-  // Tournament History State
-  const [userTournaments, setUserTournaments] = useState<Tournament[]>([]);
-  const [isLoadingTournaments, setIsLoadingTournaments] = useState(false);
-  const [tournamentFilter, setTournamentFilter] = useState<'all' | 'active' | 'completed'>('all');
-
   const directAvatarInputRef = React.useRef<HTMLInputElement>(null);
   const drawerFileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -95,27 +90,6 @@ export const GolferProfile: React.FC<GolferProfileProps> = ({
     setBio(currentUser.bio);
     setPreferredTees(currentUser.preferredTees);
   }, [currentUser]);
-
-  useEffect(() => {
-    let isMounted = true;
-    const loadTournaments = async () => {
-      setIsLoadingTournaments(true);
-      try {
-        const list = await StorageService.getUserTournaments(currentUser.id);
-        if (isMounted) {
-          setUserTournaments(list);
-        }
-      } catch (err) {
-        console.warn('Failed to load user tournaments:', err);
-      } finally {
-        if (isMounted) {
-          setIsLoadingTournaments(false);
-        }
-      }
-    };
-    loadTournaments();
-    return () => { isMounted = false; };
-  }, [currentUser.id]);
 
   // Process image selected from device storage
   const handleDeviceImageUpload = async (file: File, autoSave = false) => {
@@ -550,219 +524,6 @@ export const GolferProfile: React.FC<GolferProfileProps> = ({
         )}
       </div>
 
-      {/* TOURNAMENT HISTORY & RECORDS (SUPABASE INTEGRATION) */}
-      <div id="tournament-history-section" className={`rounded-3xl p-5 space-y-4 transition-colors ${
-        isDark 
-          ? 'bg-[#131923] border border-white/[0.08] shadow-[0_8px_30px_rgba(0,0,0,0.4)]' 
-          : 'bg-white border border-slate-200 shadow-xs'
-      }`}>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className={`w-8 h-8 rounded-xl flex items-center justify-center border ${
-              isDark 
-                ? 'bg-amber-500/10 text-amber-400 border-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.15)]' 
-                : 'bg-amber-50 text-amber-600 border-amber-200'
-            }`}>
-              <Trophy className="w-4 h-4" />
-            </div>
-            <div>
-              <h4 className={`text-xs font-black uppercase tracking-wider ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                Tournament History
-              </h4>
-              <p className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                Live and completed multi-day events linked to your golfer record
-              </p>
-            </div>
-          </div>
-
-          {onNavigateToTournaments && (
-            <button
-              type="button"
-              onClick={onNavigateToTournaments}
-              className={`flex items-center gap-1 text-2xs font-bold px-2.5 py-1 rounded-xl transition cursor-pointer ${
-                isDark 
-                  ? 'bg-white/[0.06] text-emerald-400 hover:bg-white/[0.1]' 
-                  : 'bg-emerald-50 text-emerald-700 hover:bg-emerald-100 border border-emerald-200'
-              }`}
-            >
-              <span>Tournaments Hub</span>
-              <ChevronRight className="w-3 h-3" />
-            </button>
-          )}
-        </div>
-
-        {/* Filter Pills */}
-        {userTournaments.length > 0 && (
-          <div className="flex items-center gap-1.5 pt-1">
-            {(['all', 'active', 'completed'] as const).map(tab => {
-              const count = tab === 'all' 
-                ? userTournaments.length 
-                : tab === 'active' 
-                  ? userTournaments.filter(t => t.status === 'live' || t.status === 'upcoming').length 
-                  : userTournaments.filter(t => t.status === 'completed').length;
-
-              const isSelected = tournamentFilter === tab;
-              return (
-                <button
-                  key={tab}
-                  type="button"
-                  onClick={() => setTournamentFilter(tab)}
-                  className={`px-3 py-1 rounded-xl text-2xs font-bold capitalize transition cursor-pointer ${
-                    isSelected
-                      ? isDark
-                        ? 'bg-emerald-500 text-slate-950 shadow-sm'
-                        : 'bg-emerald-600 text-white shadow-xs'
-                      : isDark
-                        ? 'bg-white/[0.04] text-slate-400 hover:text-white'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                  }`}
-                >
-                  {tab} ({count})
-                </button>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Loading State */}
-        {isLoadingTournaments ? (
-          <div className={`p-6 text-center rounded-2xl border ${
-            isDark ? 'bg-[#0D1117] border-white/[0.06] text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-500'
-          }`}>
-            <p className="text-xs">Loading tournament history from database...</p>
-          </div>
-        ) : userTournaments.length === 0 ? (
-          <div className={`p-6 text-center rounded-2xl border space-y-2 ${
-            isDark ? 'bg-[#0D1117] border-white/[0.06]' : 'bg-slate-50 border-slate-200'
-          }`}>
-            <div className={`w-10 h-10 rounded-full mx-auto flex items-center justify-center ${
-              isDark ? 'bg-amber-500/10 text-amber-400' : 'bg-amber-100 text-amber-600'
-            }`}>
-              <Trophy className="w-5 h-5" />
-            </div>
-            <p className={`text-xs font-bold ${isDark ? 'text-slate-300' : 'text-slate-800'}`}>
-              No Tournaments Linked Yet
-            </p>
-            <p className={`text-2xs max-w-xs mx-auto ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              When you are drafted into a tournament or organize one, your team records, matchplay points, and standings will automatically sync here.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {userTournaments
-              .filter(t => {
-                if (tournamentFilter === 'active') return t.status === 'live' || t.status === 'upcoming';
-                if (tournamentFilter === 'completed') return t.status === 'completed';
-                return true;
-              })
-              .map(tour => {
-                const userTeam = tour.teams?.find(team => team.playerIds?.includes(currentUser.id));
-                const isCaptain = userTeam?.captainId === currentUser.id;
-                const userRanking = tour.leaderboard?.playerRankings?.find(r => r.userId === currentUser.id);
-                const isLive = tour.status === 'live';
-                const isCompleted = tour.status === 'completed';
-
-                return (
-                  <div
-                    key={tour.id}
-                    className={`p-4 rounded-2xl border transition space-y-3 ${
-                      isDark 
-                        ? 'bg-[#0D1117] border-white/[0.08] hover:border-white/[0.14]' 
-                        : 'bg-slate-50/70 border-slate-200 hover:border-slate-300'
-                    }`}
-                  >
-                    {/* Header: Status and Title */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
-                            isLive
-                              ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
-                              : isCompleted
-                                ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30'
-                                : 'bg-slate-500/10 text-slate-400 border border-slate-500/30'
-                          }`}>
-                            {isLive ? '● Live Event' : isCompleted ? '🏆 Completed' : 'Upcoming'}
-                          </span>
-                          <span className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                            {tour.formatType.replace(/_/g, ' ').toUpperCase()}
-                          </span>
-                        </div>
-                        <h5 className={`text-sm font-black mt-1 ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                          {tour.name}
-                        </h5>
-                        {tour.tagline && (
-                          <p className={`text-2xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                            {tour.tagline}
-                          </p>
-                        )}
-                      </div>
-
-                      {userTeam && (
-                        <div className="text-right shrink-0">
-                          <span
-                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-2xs font-black text-white shadow-xs"
-                            style={{ backgroundColor: userTeam.color }}
-                          >
-                            <span>{userTeam.badgeIcon}</span>
-                            <span>{userTeam.name}</span>
-                          </span>
-                          {isCaptain && (
-                            <span className="block text-[10px] font-bold text-amber-500 mt-0.5">
-                              👑 Team Captain
-                            </span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Performance & Scorecard snapshot in this tournament */}
-                    <div className={`p-2.5 rounded-xl border grid grid-cols-3 gap-2 text-center ${
-                      isDark ? 'bg-[#131923] border-white/[0.06]' : 'bg-white border-slate-200'
-                    }`}>
-                      <div>
-                        <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                          Points Won
-                        </span>
-                        <span className="text-xs font-black text-emerald-500 font-mono tabular-nums">
-                          {userRanking?.pointsWon ?? 0} Pts
-                        </span>
-                      </div>
-                      <div>
-                        <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                          Match Record
-                        </span>
-                        <span className={`text-xs font-black font-mono tabular-nums ${isDark ? 'text-white' : 'text-slate-900'}`}>
-                          {userRanking ? `${userRanking.matchesWon}W - ${userRanking.matchesHalved}T - ${userRanking.matchesLost}L` : '0-0-0'}
-                        </span>
-                      </div>
-                      <div>
-                        <span className={`text-[10px] block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                          Team Score
-                        </span>
-                        <span className={`text-xs font-black font-mono tabular-nums ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>
-                          {tour.teams?.[0]?.totalPoints ?? 0} - {tour.teams?.[1]?.totalPoints ?? 0}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Dates & Location */}
-                    <div className={`flex items-center justify-between text-2xs pt-1 ${
-                      isDark ? 'text-slate-500' : 'text-slate-400'
-                    }`}>
-                      <span className="flex items-center gap-1">
-                        <Calendar className="w-3 h-3" />
-                        <span>{new Date(tour.startDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} – {new Date(tour.endDate).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}</span>
-                      </span>
-                      {tour.location && <span>{tour.location}</span>}
-                    </div>
-                  </div>
-                );
-              })}
-          </div>
-        )}
-      </div>
-
       {/* DEDICATED APPEARANCE & THEME SETTINGS SECTION */}
       <div id="appearance-theme-settings" className={`rounded-3xl p-5 space-y-3.5 transition-colors ${
         isDark 
@@ -955,7 +716,7 @@ export const GolferProfile: React.FC<GolferProfileProps> = ({
                 <li>Your official handicap index ({currentUser.handicapIndex.toFixed(1)}) and history</li>
                 <li>All your login credentials and saved preferences</li>
                 <li>Your match scorecards and social feed posts</li>
-                <li>Your roster slot in active Ryder Cup tournaments</li>
+                <li>Your roster slot in active tournaments</li>
               </ul>
             </div>
 
