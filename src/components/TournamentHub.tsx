@@ -54,7 +54,7 @@ import { TournamentPlayerDashboardModal } from './TournamentPlayerDashboardModal
 import { FinesRulesSection } from './FinesRulesSection';
 import { TournamentSocialFeed } from './TournamentSocialFeed';
 import { TournamentFeedPostModal } from './TournamentFeedPostModal';
-import { InteractiveMatchStatusBox } from './InteractiveMatchStatusBox';
+import { TournamentClinchProgressBar } from './TournamentClinchProgressBar';
 import { formatPlayerInitialAndSurname } from '../utils/scorecardCalculations';
 
 // Color helper for tinting backgrounds
@@ -917,53 +917,6 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
           </button>
         </div>
       </div>
-      {/* Multiple Tournaments Switcher Bar (when user has created or was drafted to > 1 tournament) */}
-      {userTournaments.length > 1 && (
-        <div id="user-tournaments-selector-bar" className="bg-white border border-slate-200 rounded-2xl p-3 shadow-xs space-y-2">
-          <div className="flex items-center justify-between text-xs">
-            <span className="font-bold text-slate-800 flex items-center gap-1.5">
-              <Trophy className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Your Tournaments ({userTournaments.length})</span>
-            </span>
-            <span className="text-slate-400 text-2xs">Tap card to switch view</span>
-          </div>
-          <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-thin">
-            {userTournaments.map(t => {
-              const isCurrent = t.id === tournament.id;
-              const role = getUserRoleInTournament(t, currentUser.id);
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => handleSelectTournament(t)}
-                  className={`shrink-0 text-left px-3 py-2 rounded-xl border text-xs transition cursor-pointer flex flex-col gap-1 min-w-[210px] ${
-                    isCurrent 
-                      ? 'bg-emerald-50/80 border-emerald-500 shadow-xs ring-1 ring-emerald-500/20' 
-                      : 'bg-slate-50 hover:bg-slate-100 border-slate-200'
-                  }`}
-                >
-                  <div className="flex items-center justify-between w-full gap-2">
-                    <span className={`font-bold truncate max-w-[150px] ${isCurrent ? 'text-emerald-950' : 'text-slate-800'}`}>
-                      {t.name}
-                    </span>
-                    {isCurrent && (
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded font-bold border ${role.badgeColor}`}>
-                      {role.label}
-                    </span>
-                    <span className="text-[10px] text-slate-500 font-medium">
-                      {t.teams?.[0]?.shortCode || 'A'} vs {t.teams?.[1]?.shortCode || 'B'}
-                    </span>
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {/* Tournament Header Card */}
       <div className="relative rounded-3xl overflow-hidden bg-slate-950 text-white shadow-xl border border-slate-800">
@@ -1023,21 +976,6 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
             <h1 className="text-xl sm:text-2xl font-black text-white">{tournament.name}</h1>
             <p className="text-xs text-slate-300 mt-1 max-w-xl">{tournament.tagline}</p>
           </div>
-
-          {/* Clinch Points Live Banner with Interactive Drill-Down Drawer */}
-          <InteractiveMatchStatusBox
-            tournament={tournament}
-            teamA={teamA}
-            teamB={teamB}
-            activeRound={activeRound}
-            totalPoints={totalPoints}
-            clinchThreshold={clinchThreshold}
-            teamAPoints={teamAPoints}
-            teamBPoints={teamBPoints}
-            teamAProjected={teamAProjected}
-            teamBProjected={teamBProjected}
-            onSelectScorecardMatch={(match, round) => setSelectedScorecardMatch({ match, round })}
-          />
         </div>
       </div>
 
@@ -1342,6 +1280,15 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
                 <span>{(activeRound.format || 'FOURSOMES').replace(/_/g, ' ')}</span>
               </div>
             )}
+
+            {/* Progress to Clinch Tournament Bar */}
+            <TournamentClinchProgressBar
+              tournament={tournament}
+              teamA={teamA}
+              teamB={teamB}
+              clinchThreshold={clinchThreshold}
+              totalPoints={totalPoints}
+            />
           </div>
 
           <div className="text-center">
