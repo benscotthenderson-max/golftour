@@ -19,6 +19,7 @@ const STORAGE_KEYS = {
   INITIALIZED: 'golftour_golf_initialized_v4',
   ACCOUNT_RESET_MIGRATION: 'golftour_accounts_reset_v4',
   ACTIVE_TAB: 'golftour_active_tab',
+  PURGED_USERS: 'golftour_purged_user_ids',
 };
 
 // Safe JSON parser
@@ -132,10 +133,33 @@ export const StorageService = {
     }
   },
 
+  getPurgedUserIds(): string[] {
+    return safeParse<string[]>(STORAGE_KEYS.PURGED_USERS, []);
+  },
+
+  isUserPurged(userIdOrIdentifier?: string | null): boolean {
+    if (!userIdOrIdentifier) return false;
+    const clean = String(userIdOrIdentifier).trim().toLowerCase();
+    const purged = this.getPurgedUserIds().map(id => String(id).toLowerCase());
+    return purged.includes(clean);
+  },
+
+  addPurgedUserId(identifier: string): void {
+    if (!identifier) return;
+    const clean = identifier.trim().toLowerCase();
+    const current = this.getPurgedUserIds();
+    if (!current.map(c => c.toLowerCase()).includes(clean)) {
+      safeSet(STORAGE_KEYS.PURGED_USERS, [...current, identifier]);
+    }
+  },
+
   getAllUsers(): GolferUser[] {
     this.runAccountResetMigration();
     const raw = safeParse<GolferUser[]>(STORAGE_KEYS.ALL_USERS, []);
-    const deduped = dedupeUsers(raw);
+    const clean = raw.filter(
+      u => u && u.id && !this.isUserPurged(u.id) && !this.isUserPurged(u.username) && !this.isUserPurged(u.email)
+    );
+    const deduped = dedupeUsers(clean);
     if (deduped.length !== raw.length) {
       safeSet(STORAGE_KEYS.ALL_USERS, deduped);
     }
@@ -143,13 +167,16 @@ export const StorageService = {
   },
 
   getUserById(userId: string): GolferUser | null {
-    if (!userId) return null;
+    if (!userId || this.isUserPurged(userId)) return null;
     const all = this.getAllUsers();
     return all.find(u => isSameUser(u, userId)) || null;
   },
 
   saveAllUsers(users: GolferUser[]): void {
-    const deduped = dedupeUsers(users);
+    const clean = (users || []).filter(
+      u => u && u.id && !this.isUserPurged(u.id) && !this.isUserPurged(u.username) && !this.isUserPurged(u.email)
+    );
+    const deduped = dedupeUsers(clean);
     safeSet(STORAGE_KEYS.ALL_USERS, deduped);
   },
 
@@ -159,24 +186,53 @@ export const StorageService = {
 
   deleteUser(userId: string): void {
     try {
-      // 1. Remove from all users
-      const allUsers = this.getAllUsers().filter(u => u.id !== userId);
-      this.saveAllUsers(allUsers);
+      if (!userId) return;
 
-      // 2. Remove from active session if current
+      // Find user details if present before removal so we can purge all aliases
+      const allBefore = safeParse<GolferUser[]>(STORAGE_KEYS.ALL_USERS, []);
+      const target = allBefore.find(u => u.id === userId || isSameUser(u, userId));
+
+      // 1. Add ID and identifier aliases to PURGED_USERS permanently
+      const purgedList = this.getPurgedUserIds();
+      const toAdd = [userId];
+      if (target?.username) toAdd.push(target.username.toLowerCase());
+      if (target?.email) toAdd.push(target.email.toLowerCase());
+      const updatedPurged = Array.from(new Set([...purgedList, ...toAdd]));
+      safeSet(STORAGE_KEYS.PURGED_USERS, updatedPurged);
+
+      // 2. Scrub from all users list
+      const remainingUsers = allBefore.filter(u => u.id !== userId && !isSameUser(u, userId));
+      safeSet(STORAGE_KEYS.ALL_USERS, remainingUsers);
+
+      // 3. Remove from active session if current
       const cur = this.getCurrentUser();
-      if (cur && cur.id === userId) {
+      if (cur && (cur.id === userId || isSameUser(cur, userId))) {
         localStorage.removeItem(STORAGE_KEYS.CURRENT_USER);
       }
 
-      // 3. Clean up user-scoped storage keys
+      // 4. Scrub credentials
+      try {
+        const credsRaw = localStorage.getItem('golftour_golf_credentials');
+        if (credsRaw) {
+          const creds = JSON.parse(credsRaw);
+          if (Array.isArray(creds)) {
+            const filtered = creds.filter((c: any) => 
+              c.userId !== userId && 
+              c.email?.toLowerCase() !== target?.email?.toLowerCase()
+            );
+            localStorage.setItem('golftour_golf_credentials', JSON.stringify(filtered));
+          }
+        }
+      } catch (e) {
+        console.error('Error scrubbing credentials:', e);
+      }
+
+      // 5. Clean up user-scoped storage keys
       localStorage.removeItem(`${STORAGE_KEYS.FRIENDS}_${userId}`);
       localStorage.removeItem(`${STORAGE_KEYS.FOLLOWED}_${userId}`);
-      localStorage.removeItem(`${STORAGE_KEYS.TOURNAMENT}_${userId}`);
 
-      // Also remove this user from any other user's friends/followed lists
-      const allUsersList = this.getAllUsers();
-      allUsersList.forEach(otherUser => {
+      // 6. Scrub this user from every other user's friends and followed lists
+      remainingUsers.forEach(otherUser => {
         const otherFriends = this.getFriendUserIds(otherUser.id);
         if (otherFriends.includes(userId)) {
           this.saveFriendUserIds(otherFriends.filter(id => id !== userId), otherUser.id);
@@ -193,52 +249,50 @@ export const StorageService = {
       const followed = this.getFollowedUserIds().filter(id => id !== userId);
       this.saveFollowedUserIds(followed);
 
-      // 4. Remove from friend requests
+      // 7. Scrub from friend requests (both sent and received)
       const reqs = this.getFriendRequests().filter(
         r => r.requesterId !== userId && r.recipientId !== userId
       );
       this.saveFriendRequests(reqs);
 
-      // 6. Remove user's posts
-      const posts = this.getPosts().filter(p => p.authorId !== userId);
-      this.savePosts(posts);
-
-      // 7. Remove player from matches
-      const matches = this.getMatches().map(m => {
-        if (m.players.some(p => p.userId === userId)) {
-          const updatedPlayers = m.players.filter(p => p.userId !== userId);
-          return {
-            ...m,
-            players: updatedPlayers,
-            status: (updatedPlayers.length === 0 ? 'cancelled' : 'open') as any,
-          };
-        }
-        return m;
-      });
-      this.saveMatches(matches);
-
-      // 8. Remove from active tournament
-      const tour = this.getTournament();
-      if (tour) {
-        let changed = false;
-        const updatedTeams = tour.teams.map(t => {
-          if (t.playerIds.includes(userId)) {
-            changed = true;
+      // 8. Scrub all posts authored by this user, AND remove comments/interactions made by this user on other posts
+      const posts = this.getPosts()
+        .filter(p => p.authorId !== userId)
+        .map(p => {
+          if (p.comments && p.comments.some(c => c.authorId === userId)) {
+            const filteredComments = p.comments.filter(c => c.authorId !== userId);
             return {
-              ...t,
-              playerIds: t.playerIds.filter(id => id !== userId),
+              ...p,
+              comments: filteredComments,
+              commentsCount: filteredComments.length,
             };
           }
-          return t;
+          return p;
         });
+      this.savePosts(posts);
 
-        if (changed) {
-          this.saveTournament({
-            ...tour,
-            teams: updatedTeams,
-          });
-        }
-      }
+      // 9. Scrub matches: delete casual/open matches created by user; for other matches, remove user from player list
+      const matches = this.getMatches()
+        .filter(m => (m as any).creatorId !== userId && (m as any).creator_id !== userId)
+        .map(m => {
+          if (m.players.some(p => p.userId === userId)) {
+            const updatedPlayers = m.players.filter(p => p.userId !== userId);
+            return {
+              ...m,
+              players: updatedPlayers,
+              status: (updatedPlayers.length === 0 ? 'cancelled' : 'open') as any,
+            };
+          }
+          return m;
+        });
+      this.saveMatches(matches);
+
+      // 10. TOURNAMENTS EXCEPTION:
+      // If that user was part of a completed or ongoing tournament, their historical record
+      // within that tournament (e.g., match scorecards, team rosters, and historical standings)
+      // MUST remain intact so the tournament data isn't corrupted, making the tournament the sole
+      // historical trace left of that user.
+      // Therefore, we intentionally preserve tournament rosters, match cards, and scores as-is.
     } catch (e) {
       console.error('Error deleting user from storage:', e);
     }

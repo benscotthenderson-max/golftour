@@ -680,8 +680,8 @@ export const AuthService = {
         });
       }
 
-      // 5. Clear all cached storage
-      localStorage.clear();
+      // 5. Clear active session tokens
+      localStorage.removeItem('golftour_golf_current_user');
       sessionStorage.clear();
 
       return { success: true };

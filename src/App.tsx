@@ -681,7 +681,7 @@ function AppContent({
 
   const handleDeleteAccount = async (userId: string) => {
     try {
-      // 1. Delete user profile and related rows from Supabase
+      // 1. Delete user profile and related rows from Supabase (cascades profile, posts, friendships, matches)
       await SupabaseService.deleteProfile(userId).catch(err => {
         console.warn('[App] Supabase deleteProfile error:', err);
       });
@@ -693,21 +693,45 @@ function AppContent({
         });
       }
 
-      // 3. Clear local StorageService state and clear entire localStorage
+      // 3. Cascade scrub local StorageService state (all users, credentials, friendships, requests, posts, comments)
       StorageService.deleteUser(userId);
-      localStorage.clear();
       sessionStorage.clear();
 
       // 4. Update memory state
       setAllUsers(prev => prev.filter(u => u.id !== userId));
+      setPosts(prev => 
+        prev
+          .filter(p => p.authorId !== userId)
+          .map(p => {
+            const cleanComments = (p.comments || []).filter(c => c.authorId !== userId);
+            return {
+              ...p,
+              comments: cleanComments,
+              commentsCount: cleanComments.length,
+            };
+          })
+      );
+      setFriendUserIds(prev => {
+        const next = new Set(prev);
+        next.delete(userId);
+        return next;
+      });
+      setFollowedUserIds(prev => {
+        const next = new Set(prev);
+        next.delete(userId);
+        return next;
+      });
+      setFriendRequests(prev => 
+        prev.filter(r => r.requesterId !== userId && r.recipientId !== userId)
+      );
+
       onSetCurrentUser(null);
 
       // 5. Hard redirect to the login/landing route to prevent ghost re-login
       window.location.replace(window.location.origin);
     } catch (error) {
       console.error('[App] Error during account deletion:', error);
-      localStorage.clear();
-      sessionStorage.clear();
+      StorageService.deleteUser(userId);
       onSetCurrentUser(null);
       window.location.replace(window.location.origin);
     }

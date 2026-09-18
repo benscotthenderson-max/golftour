@@ -243,7 +243,8 @@ export const TournamentCreationWizard: React.FC<TournamentCreationWizardProps> =
   };
 
   const handleDraftPlayerToTeam = (userId: string, targetTeam: 'A' | 'B') => {
-    const user = allUsers.find(u => u.id === userId);
+    if (StorageService.isUserPurged(userId)) return;
+    const user = allUsers.find(u => u.id === userId && !StorageService.isUserPurged(u.id));
     if (!user) return;
 
     setDraftValidationWarning(null);
@@ -264,7 +265,8 @@ export const TournamentCreationWizard: React.FC<TournamentCreationWizardProps> =
   };
 
   const handleAddRegisteredUserToPool = (userId: string) => {
-    const user = allUsers.find(u => u.id === userId);
+    if (StorageService.isUserPurged(userId)) return;
+    const user = allUsers.find(u => u.id === userId && !StorageService.isUserPurged(u.id));
     if (!user || playerPool.some(p => p.id === user.id)) return;
 
     setDraftValidationWarning(null);
@@ -880,7 +882,7 @@ export const TournamentCreationWizard: React.FC<TournamentCreationWizardProps> =
                     <Search className="w-3.5 h-3.5 text-emerald-600" /> Explicit Golfer Search & Draft
                   </span>
                   <span className="text-2xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                    {allUsers.filter(u => u.id !== currentUser.id && !playerPool.some(p => p.id === u.id)).length} Available to Draft
+                    {allUsers.filter(u => u.id !== currentUser.id && !playerPool.some(p => p.id === u.id) && !StorageService.isUserPurged(u.id)).length} Available to Draft
                   </span>
                 </div>
 
@@ -907,7 +909,7 @@ export const TournamentCreationWizard: React.FC<TournamentCreationWizardProps> =
                 {/* Search Candidates List */}
                 {(() => {
                   const availableGolfers = allUsers.filter(
-                    u => u.id !== currentUser.id && !playerPool.some(p => p.id === u.id)
+                    u => u.id !== currentUser.id && !playerPool.some(p => p.id === u.id) && !StorageService.isUserPurged(u.id)
                   );
                   const q = searchQuery.trim().toLowerCase();
                   const filtered = q

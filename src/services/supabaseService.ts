@@ -423,7 +423,9 @@ export const SupabaseService = {
       }
 
       if (data && data.length > 0) {
-        const users = dedupeUsers(data.map(mapProfileRowToUser));
+        const users = dedupeUsers(data.map(mapProfileRowToUser)).filter(
+          u => !StorageService.isUserPurged(u.id) && !StorageService.isUserPurged(u.username) && !StorageService.isUserPurged(u.email)
+        );
         // Synchronize into local storage cache
         StorageService.saveAllUsers(users);
         return users;
@@ -440,7 +442,7 @@ export const SupabaseService = {
    * Fetch a single user profile by UUID from Supabase profiles table
    */
   async fetchProfileById(userId: string): Promise<GolferUser | null> {
-    if (!userId) return null;
+    if (!userId || StorageService.isUserPurged(userId)) return null;
 
     if (!this.isLive() || !supabase) {
       return StorageService.getUserById(userId) || null;
@@ -460,6 +462,9 @@ export const SupabaseService = {
 
       if (data) {
         const user = mapProfileRowToUser(data);
+        if (StorageService.isUserPurged(user.id) || StorageService.isUserPurged(user.username) || StorageService.isUserPurged(user.email)) {
+          return null;
+        }
         // Update in local cache
         const all = StorageService.getAllUsers();
         const idx = all.findIndex(u => u.id === user.id);
@@ -523,12 +528,15 @@ export const SupabaseService = {
         console.warn('[SupabaseService] searchProfiles query failed:', queryError.message);
         const allLocal = StorageService.getAllUsers();
         return dedupeUsers(allLocal.filter(u => 
-          u.username.toLowerCase().includes(cleanQuery) ||
-          u.displayName.toLowerCase().includes(cleanQuery)
+          !StorageService.isUserPurged(u.id) &&
+          (u.username.toLowerCase().includes(cleanQuery) ||
+          u.displayName.toLowerCase().includes(cleanQuery))
         ));
       }
 
-      return dedupeUsers((data || []).map(mapProfileRowToUser));
+      return dedupeUsers((data || []).map(mapProfileRowToUser)).filter(
+        u => !StorageService.isUserPurged(u.id) && !StorageService.isUserPurged(u.username) && !StorageService.isUserPurged(u.email)
+      );
     } catch (err) {
       console.error('[SupabaseService] searchProfiles exception:', err);
       return [];
@@ -540,7 +548,7 @@ export const SupabaseService = {
    */
   async findProfileByIdentifier(identifier: string): Promise<GolferUser | null> {
     const cleanId = identifier.trim().toLowerCase().replace(/^@/, '');
-    if (!cleanId) return null;
+    if (!cleanId || StorageService.isUserPurged(cleanId)) return null;
 
     if (!this.isLive() || !supabase) {
       const allLocal = StorageService.getAllUsers();
@@ -564,7 +572,11 @@ export const SupabaseService = {
       }
 
       if (data) {
-        return mapProfileRowToUser(data);
+        const user = mapProfileRowToUser(data);
+        if (StorageService.isUserPurged(user.id) || StorageService.isUserPurged(user.username) || StorageService.isUserPurged(user.email)) {
+          return null;
+        }
+        return user;
       }
       return null;
     } catch (err) {
@@ -655,16 +667,65 @@ export const SupabaseService = {
   },
 
   async deleteProfile(userId: string): Promise<void> {
-    // 1. Delete locally
+    if (!userId) return;
+
+    // 1. Delete locally with cascade
     StorageService.deleteUser(userId);
 
-    // 2. Delete remotely
+    // 2. Delete remotely from Supabase
     if (this.isLive() && supabase) {
       try {
+        // Cascade remove profile, authored posts, matches created by user, and all friendships
         await supabase.from('profiles').delete().eq('id', userId);
         await supabase.from('posts').delete().eq('author_id', userId);
         await supabase.from('matches').delete().eq('creator_id', userId);
         await supabase.from('friendships').delete().or(`requester_id.eq.${userId},recipient_id.eq.${userId}`);
+
+        // Scrub user comments from all remaining posts in Supabase
+        try {
+          const { data: postsWithComments } = await supabase
+            .from('posts')
+            .select('id, comments');
+
+          if (postsWithComments && Array.isArray(postsWithComments)) {
+            for (const p of postsWithComments) {
+              if (Array.isArray(p.comments) && p.comments.some((c: any) => c.authorId === userId)) {
+                const cleanedComments = p.comments.filter((c: any) => c.authorId !== userId);
+                await supabase
+                  .from('posts')
+                  .update({ comments: cleanedComments, comments_count: cleanedComments.length })
+                  .eq('id', p.id);
+              }
+            }
+          }
+        } catch (commentErr) {
+          console.warn('[SupabaseService] Error scrubbing comments in Supabase:', commentErr);
+        }
+
+        // Scrub player entry from any open casual matches
+        try {
+          const { data: openMatches } = await supabase
+            .from('matches')
+            .select('id, players');
+
+          if (openMatches && Array.isArray(openMatches)) {
+            for (const m of openMatches) {
+              if (Array.isArray(m.players) && m.players.some((pl: any) => pl.userId === userId)) {
+                const updatedPlayers = m.players.filter((pl: any) => pl.userId !== userId);
+                await supabase
+                  .from('matches')
+                  .update({ players: updatedPlayers })
+                  .eq('id', m.id);
+              }
+            }
+          }
+        } catch (matchErr) {
+          console.warn('[SupabaseService] Error scrubbing match players in Supabase:', matchErr);
+        }
+
+        // NOTE ON TOURNAMENTS EXCEPTION:
+        // Completed and ongoing tournament records remain intact with all match scorecards,
+        // rosters, and historical standings preserved.
       } catch (err) {
         console.warn('[SupabaseService] deleteProfile exception:', err);
       }
@@ -724,15 +785,17 @@ export const SupabaseService = {
         }
       });
 
-      const friendUserIds = Array.from(friendIdsSet);
-      // Merge with local followed IDs
-      const followedUserIds = StorageService.getFollowedUserIds(userId);
+      const validRequests = requests.filter(
+        r => !StorageService.isUserPurged(r.requesterId) && !StorageService.isUserPurged(r.recipientId)
+      );
+      const friendUserIds = Array.from(friendIdsSet).filter(id => !StorageService.isUserPurged(id));
+      const followedUserIds = StorageService.getFollowedUserIds(userId).filter(id => !StorageService.isUserPurged(id));
 
       // Cache locally
-      StorageService.saveFriendRequests(requests);
+      StorageService.saveFriendRequests(validRequests);
       StorageService.saveFriendUserIds(friendUserIds, userId);
 
-      return { requests, friendUserIds, followedUserIds };
+      return { requests: validRequests, friendUserIds, followedUserIds };
     } catch (err) {
       console.warn('[SupabaseService] fetchFriendships exception:', err);
       return {
@@ -834,7 +897,17 @@ export const SupabaseService = {
       }
 
       if (data && data.length > 0) {
-        const posts = data.map(mapPostRowToPost);
+        const posts = data
+          .map(mapPostRowToPost)
+          .filter(p => !StorageService.isUserPurged(p.authorId))
+          .map(p => {
+            const cleanComments = (p.comments || []).filter(c => !StorageService.isUserPurged(c.authorId));
+            return {
+              ...p,
+              comments: cleanComments,
+              commentsCount: cleanComments.length,
+            };
+          });
         StorageService.savePosts(posts);
         return posts;
       }

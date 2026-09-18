@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { SupabaseService } from '../services/supabaseService';
+import { StorageService } from '../utils/storage';
 import { dedupeUsers, isSameUser } from '../utils/userDedupe';
 
 interface PlayerDiscoveryProps {
@@ -74,8 +75,8 @@ export const PlayerDiscovery: React.FC<PlayerDiscoveryProps> = ({
     debounceTimerRef.current = setTimeout(async () => {
       try {
         const results = await SupabaseService.searchProfiles(cleanQuery);
-        // Exclude current user from global search results
-        setGlobalProfiles(results.filter(u => u.id !== currentUser.id));
+        // Exclude current user and any purged users from global search results
+        setGlobalProfiles(results.filter(u => u.id !== currentUser.id && !StorageService.isUserPurged(u.id)));
       } catch (err) {
         console.warn('[PlayerDiscovery] Global search error:', err);
       } finally {
@@ -94,15 +95,18 @@ export const PlayerDiscovery: React.FC<PlayerDiscoveryProps> = ({
     r.recipientId === currentUser.id && 
     r.status === 'pending' &&
     !isSameUser(r.requester, currentUser) &&
-    !isSameUser(r.requesterId, currentUser.id)
+    !isSameUser(r.requesterId, currentUser.id) &&
+    !StorageService.isUserPurged(r.requesterId)
   );
 
-  // Filter out any user record representing the current user (by ID, email, or username)
-  const otherUsers = allUsers.filter(u => !isSameUser(u, currentUser));
-  const otherGlobal = globalProfiles.filter(u => !isSameUser(u, currentUser));
+  // Filter out any user record representing the current user or purged users
+  const otherUsers = allUsers.filter(u => !isSameUser(u, currentUser) && !StorageService.isUserPurged(u.id));
+  const otherGlobal = globalProfiles.filter(u => !isSameUser(u, currentUser) && !StorageService.isUserPurged(u.id));
 
   // Merge and deduplicate all golfers (global takes priority for fresh live data)
-  const allAvailableGolfers = dedupeUsers([...otherGlobal, ...otherUsers]).filter(u => !isSameUser(u, currentUser));
+  const allAvailableGolfers = dedupeUsers([...otherGlobal, ...otherUsers]).filter(
+    u => !isSameUser(u, currentUser) && !StorageService.isUserPurged(u.id)
+  );
 
   const hasSearchQuery = searchQuery.trim().length > 0;
 
