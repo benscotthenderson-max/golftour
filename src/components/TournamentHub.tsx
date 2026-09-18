@@ -9,7 +9,8 @@ import {
 } from '../types/golf';
 import { 
   recalculateTournamentLeaderboard,
-  isTournamentAllMatchesCompleted
+  isTournamentAllMatchesCompleted,
+  calculateClinchThreshold
 } from '../utils/tournamentEngine';
 import { StorageService } from '../utils/storage';
 import { TournamentFeedService } from '../services/tournamentFeedService';
@@ -715,7 +716,7 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
                   const teamB = t.teams?.[1];
                   const teamAPoints = t.leaderboard?.teamStandings?.find(st => st.teamId === teamA?.id)?.points ?? 0;
                   const teamBPoints = t.leaderboard?.teamStandings?.find(st => st.teamId === teamB?.id)?.points ?? 0;
-                  const clinchPts = t.clinchPoints || 8.5;
+                  const clinchPts = calculateClinchThreshold(t.totalPoints || 16, t.clinchPoints);
                   const effStatus = getEffectiveTournamentStatus(t);
                   const isLive = effStatus === 'live';
                   const isCompleted = effStatus === 'completed';
@@ -880,7 +881,7 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
 
   // Dynamic Clinch Metrics
   const totalPoints = tournament.totalPoints || 16.0;
-  const clinchThreshold = tournament.clinchPoints || 8.5;
+  const clinchThreshold = calculateClinchThreshold(totalPoints, tournament.clinchPoints);
   const teamAPoints = tournament.leaderboard?.teamStandings?.find(t => t.teamId === teamA.id)?.points || 0;
   const teamBPoints = tournament.leaderboard?.teamStandings?.find(t => t.teamId === teamB.id)?.points || 0;
   const teamAProjected = tournament.leaderboard?.teamStandings?.find(t => t.teamId === teamA.id)?.projectedPoints || teamAPoints;
@@ -1118,7 +1119,7 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
                 </div>
                 <div className="border-t border-slate-200 mt-1 pt-1 text-right">
                   <span className="text-[9px] sm:text-[11px] font-black uppercase tracking-wider text-slate-600 block">
-                    {totalPoints ? Math.max(0, totalPoints - clinchThreshold) : clinchThreshold} POINTS TO RETAIN
+                    {clinchThreshold} POINTS TO WIN
                   </span>
                 </div>
               </div>
@@ -1570,7 +1571,7 @@ export const TournamentHub: React.FC<TournamentHubProps> = ({
               <div className="p-3 rounded-xl bg-slate-50 border border-slate-200">
                 <strong className="text-slate-900 block font-bold">2. Clinch Threshold Formula</strong>
                 <p className="text-slate-600 mt-0.5">
-                  For a tournament with <span className="font-mono font-bold">N</span> total available points, the clinch requirement is <span className="font-mono font-bold">(N / 2) + 0.5</span> points. In this 16-point event, <strong>8.5 Points</strong> clinches the Cup.
+                  For a tournament with <span className="font-mono font-bold">N</span> total available points, the clinch requirement is <span className="font-mono font-bold">Math.floor(N / 2) + 1</span> for odd totals (e.g. 2 pts to win out of 3, 3 pts out of 5), or <span className="font-mono font-bold">(N / 2) + 0.5</span> for even totals (e.g. 8.5 pts out of 16). Both teams compete equally for an outright championship win.
                 </p>
               </div>
 

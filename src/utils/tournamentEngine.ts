@@ -295,13 +295,36 @@ function getStoredUsersDirectory(): Map<string, GolferUser | PlayerInMatch> {
 }
 
 /**
+ * Calculates the points required to clinch a tournament outright for either competing team.
+ * - For odd point totals: strictly Math.floor(totalPoints / 2) + 1 (e.g. 3 pts -> 2 pts, 5 pts -> 3 pts).
+ * - For even point totals: (totalPoints / 2) + 0.5 (e.g. 16 pts -> 8.5 pts, 28 pts -> 14.5 pts).
+ * Both teams compete on an equal footing for an outright win with zero title-retaining bias.
+ */
+export function calculateClinchThreshold(totalPoints: number, existingClinchPoints?: number): number {
+  const pts = totalPoints && totalPoints > 0 ? totalPoints : 16.0;
+  const isOdd = Math.round(pts) % 2 !== 0;
+
+  if (isOdd) {
+    // Strictly integer clinch for odd points: 3 -> 2, 5 -> 3, 7 -> 4
+    return Math.floor(pts / 2) + 1;
+  }
+
+  // If even and a custom threshold > half exists, preserve it if valid
+  if (typeof existingClinchPoints === 'number' && existingClinchPoints > pts / 2 && Number.isFinite(existingClinchPoints)) {
+    return existingClinchPoints;
+  }
+
+  return (pts / 2) + 0.5;
+}
+
+/**
  * Dynamic Leaderboard Aggregator:
  * Computes live team point standings, round matrices, clinch threshold, and individual MVP table
  * Accurately associates real player names, teams, and match statistics.
  */
 export function recalculateTournamentLeaderboard(tournament: Tournament, allUsers?: GolferUser[]): TournamentLeaderboard {
   const totalPoints = tournament.totalPoints || 16.0;
-  const clinchThreshold = tournament.clinchPoints || (Math.floor(totalPoints / 2) + 0.5);
+  const clinchThreshold = calculateClinchThreshold(totalPoints, tournament.clinchPoints);
 
   // Initialize team counters
   const teamMap: Record<string, TeamLeaderboardEntry> = {};

@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import { Trophy, Info, X } from 'lucide-react';
 import { Tournament, TournamentTeam, TournamentMatch } from '../types/golf';
+import { calculateClinchThreshold } from '../utils/tournamentEngine';
 
 interface TournamentClinchProgressBarProps {
   tournament: Tournament;
   teamA: TournamentTeam;
   teamB: TournamentTeam;
-  clinchThreshold: number;
+  clinchThreshold?: number;
   totalPoints: number;
 }
 
@@ -96,6 +97,11 @@ export const TournamentClinchProgressBar: React.FC<TournamentClinchProgressBarPr
   // Total segments to display across the bar
   const totalSegments = Math.max(1, Math.round(totalPoints || 16));
 
+  // Clinch calculation using centralized strictly fair formula
+  const effectiveClinchThreshold = React.useMemo(() => {
+    return calculateClinchThreshold(totalPoints, clinchThreshold);
+  }, [totalPoints, clinchThreshold]);
+
   // Percentage widths for track segments
   const teamASolidPct = Math.min(100, (teamAPointsWon / totalPoints) * 100);
   const teamAInPlayPct = Math.min(100 - teamASolidPct, (teamALeadingCount / totalPoints) * 100);
@@ -103,10 +109,9 @@ export const TournamentClinchProgressBar: React.FC<TournamentClinchProgressBarPr
   const teamBSolidPct = Math.min(100, (teamBPointsWon / totalPoints) * 100);
   const teamBInPlayPct = Math.min(100 - teamBSolidPct, (teamBLeadingCount / totalPoints) * 100);
 
-  // Clinch evaluation
-  const teamAClinched = teamAPointsWon >= clinchThreshold;
-  const retainThreshold = totalPoints ? Math.max(0, totalPoints - clinchThreshold) : clinchThreshold;
-  const teamBClinched = teamBPointsWon >= retainThreshold;
+  // Clinch evaluation - both teams compete on equal footing to reach effectiveClinchThreshold
+  const teamAClinched = teamAPointsWon >= effectiveClinchThreshold;
+  const teamBClinched = teamBPointsWon >= effectiveClinchThreshold;
 
   // Primary and lighter colors
   const teamAColor = teamA.color || '#C8102E'; // Default Team A Red
@@ -123,7 +128,7 @@ export const TournamentClinchProgressBar: React.FC<TournamentClinchProgressBarPr
       id="progress-to-clinch-section" 
       className="bg-[#0B1E36] px-4 sm:px-6 py-4 border-t border-slate-700/80 space-y-3 select-none"
     >
-      {/* Clinch Header Row: Team A Points to Win | Points | Team B Points to Retain */}
+      {/* Clinch Header Row: Team A Points to Win | Points | Team B Points to Win */}
       <div className="flex items-center justify-between gap-2">
         {/* Left: Team A target */}
         <div className="flex items-center gap-2 sm:gap-2.5">
@@ -139,7 +144,7 @@ export const TournamentClinchProgressBar: React.FC<TournamentClinchProgressBarPr
               className="text-2xl sm:text-3xl font-black font-mono tracking-tight leading-none"
               style={{ color: teamAColor }}
             >
-              {clinchThreshold}
+              {effectiveClinchThreshold}
             </span>
             <span className="text-xs sm:text-sm font-serif italic text-slate-300 font-medium">
               to win
@@ -161,10 +166,10 @@ export const TournamentClinchProgressBar: React.FC<TournamentClinchProgressBarPr
               className="text-2xl sm:text-3xl font-black font-mono tracking-tight leading-none"
               style={{ color: teamBColor }}
             >
-              {retainThreshold}
+              {effectiveClinchThreshold}
             </span>
             <span className="text-xs sm:text-sm font-serif italic text-slate-300 font-medium">
-              to retain
+              to win
             </span>
           </div>
           <div 
@@ -247,15 +252,28 @@ export const TournamentClinchProgressBar: React.FC<TournamentClinchProgressBarPr
           ))}
         </div>
 
-        {/* Retain / Clinch Marker Line (Vertical divider marker as seen in the Ryder Cup broadcast graphic) */}
-        {retainThreshold > 0 && (
-          <div 
-            className="absolute top-0 bottom-0 w-1 bg-slate-950/80 z-20 pointer-events-none shadow-[0_0_6px_rgba(0,0,0,0.8)]"
-            style={{
-              left: `${(retainThreshold / totalPoints) * 100}%`,
-            }}
-            title={`Clinch threshold marker (${retainThreshold} pts)`}
-          />
+        {/* Clinch Marker Lines: marks the points needed to clinch outright for Team A (from left) and Team B (from right) */}
+        {totalPoints > 0 && effectiveClinchThreshold > 0 && (
+          <>
+            {/* Team A Clinch Line */}
+            <div 
+              className="absolute top-0 bottom-0 w-0.5 sm:w-1 bg-slate-950/90 z-20 pointer-events-none shadow-[0_0_6px_rgba(0,0,0,0.8)]"
+              style={{
+                left: `${(effectiveClinchThreshold / totalPoints) * 100}%`,
+              }}
+              title={`${teamA.name} Clinch Target (${effectiveClinchThreshold} pts)`}
+            />
+            {/* Team B Clinch Line (from right) if asymmetric */}
+            {((totalPoints - effectiveClinchThreshold) / totalPoints) * 100 !== (effectiveClinchThreshold / totalPoints) * 100 && (
+              <div 
+                className="absolute top-0 bottom-0 w-0.5 sm:w-1 bg-slate-950/90 z-20 pointer-events-none shadow-[0_0_6px_rgba(0,0,0,0.8)]"
+                style={{
+                  left: `${((totalPoints - effectiveClinchThreshold) / totalPoints) * 100}%`,
+                }}
+                title={`${teamB.name} Clinch Target (${effectiveClinchThreshold} pts)`}
+              />
+            )}
+          </>
         )}
 
         {/* Bold White Numbers Inside the Bar */}
@@ -335,7 +353,7 @@ export const TournamentClinchProgressBar: React.FC<TournamentClinchProgressBarPr
             </div>
           </div>
           <p className="text-[10px] text-slate-400 pt-1 border-t border-slate-800">
-            Total of {totalPoints} points available across all rounds. A team reaching {clinchThreshold} points wins the championship.
+            Total of {totalPoints} points available across all rounds. A team reaching {effectiveClinchThreshold} points wins the championship outright.
           </p>
         </div>
       )}

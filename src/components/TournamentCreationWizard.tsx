@@ -9,7 +9,7 @@ import {
   GolferUser 
 } from '../types/golf';
 import { MOCK_COURSES } from '../data/mockData';
-import { generateAutoPairings, recalculateTournamentLeaderboard } from '../utils/tournamentEngine';
+import { generateAutoPairings, recalculateTournamentLeaderboard, calculateClinchThreshold } from '../utils/tournamentEngine';
 import { StorageService } from '../utils/storage';
 import { 
   Trophy, 
@@ -376,7 +376,7 @@ export const TournamentCreationWizard: React.FC<TournamentCreationWizardProps> =
   const handleFinishWizard = async () => {
     const tourId = `tour-custom-${Date.now()}`;
     const totalPoints = calculateTotalPoints();
-    const clinchPoints = Math.floor(totalPoints / 2) + 0.5;
+    const clinchPoints = calculateClinchThreshold(totalPoints);
 
     const finalPool = [...playerPool];
     const teamAIds = teamAPlayerIds;
@@ -1455,7 +1455,7 @@ export const TournamentCreationWizard: React.FC<TournamentCreationWizardProps> =
                   </div>
                   <div>
                     <div className="text-[10px] text-slate-400">To Clinch</div>
-                    <div className="text-sm font-black text-emerald-400">{Math.floor(calculateTotalPoints() / 2) + 0.5} Pts</div>
+                    <div className="text-sm font-black text-emerald-400">{calculateClinchThreshold(calculateTotalPoints())} Pts</div>
                   </div>
                   <div>
                     <div className="text-[10px] text-slate-400">Rounds</div>
